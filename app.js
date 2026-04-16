@@ -370,29 +370,248 @@
     const wrap = document.getElementById('marking-output');
     if (!wrap) return;
 
-    const text = payload && payload.mark_sheet
-      ? payload.mark_sheet
-      : '(The marking service returned an empty response.)';
+    const sheet      = payload && payload.mark_sheet;
+    const rawText    = payload && payload.raw_text;
+    const fileName   = state.file ? state.file.name : '—';
+    const moduleName = MODULE_LABELS[state.moduleKey] || state.moduleKey || '—';
 
-    const usage = payload && payload.usage ? payload.usage : null;
-    const meta  = usage
-      ? 'Model: ' + escapeHtml(payload.model || '—') +
-        ' &middot; Input tokens: ' + (usage.input_tokens || 0) +
-        ' &middot; Output tokens: ' + (usage.output_tokens || 0) +
-        (usage.cache_read_input_tokens
-          ? ' &middot; Cache read: ' + usage.cache_read_input_tokens
-          : '')
-      : '';
-
-    wrap.innerHTML =
-      '<div class="output-result">' +
+    const headerHtml =
+      '<header class="result-header">' +
         '<h3 class="output-result-heading">' +
           '<i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> ' +
           'AI Mark Sheet' +
         '</h3>' +
-        '<p class="output-result-body">' + escapeHtml(text) + '</p>' +
-        (meta ? '<p class="output-result-meta">' + meta + '</p>' : '') +
+        '<dl class="result-meta-grid">' +
+          '<dt>Submission</dt><dd>' + escapeHtml(fileName) + '</dd>' +
+          '<dt>Module</dt><dd>' + escapeHtml(moduleName) + '</dd>' +
+          '<dt>Generated</dt><dd>' + escapeHtml(formatDateTime(new Date())) + '</dd>' +
+        '</dl>' +
+      '</header>';
+
+    const bodyHtml = sheet
+      ? renderStructuredMarkSheet(sheet)
+      : renderRawMarkSheet(rawText);
+
+    const usage = payload && payload.usage ? payload.usage : null;
+    const metaHtml = usage
+      ? '<p class="output-result-meta">' +
+          'Model: ' + escapeHtml(payload.model || '—') +
+          ' &middot; Input tokens: ' + (usage.input_tokens || 0) +
+          ' &middot; Output tokens: ' + (usage.output_tokens || 0) +
+          (usage.cache_read_input_tokens
+            ? ' &middot; Cache read: ' + usage.cache_read_input_tokens
+            : '') +
+        '</p>'
+      : '';
+
+    const actionsHtml =
+      '<div class="results-actions" role="group" aria-label="Mark sheet actions">' +
+        '<button type="button" class="btn btn-marking" data-action="copy-output">' +
+          '<i class="fa-solid fa-copy" aria-hidden="true"></i> Copy Output' +
+        '</button>' +
+        '<button type="button" class="btn btn-outline-dark" data-action="new-submission">' +
+          '<i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Mark Another Submission' +
+        '</button>' +
+        '<button type="button" class="btn btn-outline-dark" data-action="print-output">' +
+          '<i class="fa-solid fa-print" aria-hidden="true"></i> Print' +
+        '</button>' +
       '</div>';
+
+    wrap.innerHTML =
+      '<div class="output-result">' +
+        headerHtml +
+        bodyHtml +
+        metaHtml +
+        actionsHtml +
+      '</div>';
+
+    // Cache the data the action handlers need.
+    wrap._lastResult = {
+      sheet: sheet || null,
+      rawText: rawText || '',
+      fileName: fileName,
+      moduleName: moduleName,
+      generatedAt: formatDateTime(new Date())
+    };
+
+    wireResultActions(wrap);
+  }
+
+  function renderStructuredMarkSheet(sheet) {
+    const criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
+    const summary  = sheet.summary || {};
+
+    const cardsHtml =
+      '<section class="criteria-grid" aria-label="Criteria assessment">' +
+        criteria.map(function (c, i) {
+          const name          = c && c.name          ? String(c.name)          : ('Criterion ' + (i + 1));
+          const score         = c && c.score         ? String(c.score)         : '—';
+          const justification = c && c.justification ? String(c.justification) : '';
+          const feedback      = c && c.feedback      ? String(c.feedback)      : '';
+
+          return (
+            '<article class="criterion-card">' +
+              '<header class="criterion-card-head">' +
+                '<h4 class="criterion-card-name">' + escapeHtml(name) + '</h4>' +
+                '<span class="criterion-card-score">' + escapeHtml(score) + '</span>' +
+              '</header>' +
+              (justification
+                ? '<div class="criterion-card-section">' +
+                    '<span class="criterion-card-label">Justification</span>' +
+                    '<p>' + escapeHtml(justification) + '</p>' +
+                  '</div>'
+                : '') +
+              (feedback
+                ? '<div class="criterion-card-section">' +
+                    '<span class="criterion-card-label">Feedback</span>' +
+                    '<p>' + escapeHtml(feedback) + '</p>' +
+                  '</div>'
+                : '') +
+            '</article>'
+          );
+        }).join('') +
+      '</section>';
+
+    const overallHtml =
+      '<section class="overall-box" aria-label="Overall grade">' +
+        '<div class="overall-box-grade">' +
+          '<span class="overall-box-label">Overall Grade</span>' +
+          '<span class="overall-box-value">' +
+            escapeHtml(sheet.overall_grade ? String(sheet.overall_grade) : '—') +
+          '</span>' +
+        '</div>' +
+        (summary.strengths
+          ? '<div class="overall-box-section">' +
+              '<h4>Strengths</h4>' +
+              '<p>' + escapeHtml(String(summary.strengths)) + '</p>' +
+            '</div>'
+          : '') +
+        (summary.areas_for_improvement
+          ? '<div class="overall-box-section">' +
+              '<h4>Areas for improvement</h4>' +
+              '<p>' + escapeHtml(String(summary.areas_for_improvement)) + '</p>' +
+            '</div>'
+          : '') +
+      '</section>';
+
+    return cardsHtml + overallHtml;
+  }
+
+  function renderRawMarkSheet(text) {
+    // Fallback path when the model didn't return parseable JSON.
+    return (
+      '<div class="result-fallback-notice">' +
+        '<i class="fa-solid fa-circle-info" aria-hidden="true"></i> ' +
+        'The marker returned an unstructured response, shown below as plain text.' +
+      '</div>' +
+      '<pre class="output-result-body">' +
+        escapeHtml(text || '(No content returned.)') +
+      '</pre>'
+    );
+  }
+
+  // -------- Result action handlers --------
+  function wireResultActions(wrap) {
+    const buttons = wrap.querySelectorAll('[data-action]');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const action = btn.getAttribute('data-action');
+        if (action === 'copy-output')      handleCopyOutput(btn);
+        else if (action === 'new-submission') handleNewSubmission();
+        else if (action === 'print-output')   window.print();
+      });
+    });
+  }
+
+  function handleCopyOutput(button) {
+    const wrap = document.getElementById('marking-output');
+    const data = wrap && wrap._lastResult;
+    if (!data) return;
+
+    const text = data.sheet
+      ? markSheetToPlainText(data.sheet, data.fileName, data.moduleName, data.generatedAt)
+      : data.rawText;
+
+    function flash(label) {
+      const original = button.innerHTML;
+      button.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> ' + label;
+      button.disabled = true;
+      setTimeout(function () {
+        button.innerHTML = original;
+        button.disabled = false;
+      }, 1600);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { flash('Copied'); },
+        function () { fallbackCopy(text); flash('Copied'); }
+      );
+    } else {
+      fallbackCopy(text);
+      flash('Copied');
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (_) { /* ignore */ }
+    document.body.removeChild(ta);
+  }
+
+  function handleNewSubmission() {
+    clearFile();                       // resets file, module, output
+    scrollToSection('marking-tool');
+  }
+
+  function markSheetToPlainText(sheet, fileName, moduleName, generatedAt) {
+    const lines = [];
+    lines.push('20/20 PROJECT MANAGEMENT — AI MARK SHEET');
+    lines.push('Submission: ' + fileName);
+    lines.push('Module:     ' + moduleName);
+    lines.push('Generated:  ' + generatedAt);
+    lines.push('');
+    lines.push('CRITERIA');
+    lines.push('--------');
+
+    const criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
+    criteria.forEach(function (c, i) {
+      const name  = (c && c.name)  ? String(c.name)  : ('Criterion ' + (i + 1));
+      const score = (c && c.score) ? String(c.score) : '—';
+      lines.push('');
+      lines.push((i + 1) + '. ' + name + '  —  ' + score);
+      if (c && c.justification) lines.push('   Justification: ' + String(c.justification));
+      if (c && c.feedback)      lines.push('   Feedback:      ' + String(c.feedback));
+    });
+
+    lines.push('');
+    lines.push('OVERALL GRADE: ' + (sheet.overall_grade ? String(sheet.overall_grade) : '—'));
+    lines.push('');
+
+    const summary = sheet.summary || {};
+    if (summary.strengths) {
+      lines.push('Strengths:');
+      lines.push(String(summary.strengths));
+      lines.push('');
+    }
+    if (summary.areas_for_improvement) {
+      lines.push('Areas for improvement:');
+      lines.push(String(summary.areas_for_improvement));
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  function formatDateTime(d) {
+    const pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   function renderErrorOutput(message) {
