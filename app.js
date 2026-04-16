@@ -288,15 +288,65 @@
 
     btn.addEventListener('click', function () {
       if (!state.file || !state.moduleKey) return;
-      renderPendingOutput();
-      scrollToSection('marking-output');
+      submitForMarking();
     });
   }
 
+  /**
+   * Send the file + module to /api/mark, render loading / result / error.
+   * No retry — the server is in charge of upstream retries.
+   */
+  async function submitForMarking() {
+    const btn = document.getElementById('submit-marking-btn');
+
+    renderLoadingOutput();
+    scrollToSection('marking-output');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML =
+        'Marking in progress <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', state.file);
+      formData.append('module', state.moduleKey);
+
+      const response = await fetch('/api/mark', {
+        method: 'POST',
+        body: formData
+      });
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (parseErr) {
+        throw new Error('The server returned an unreadable response.');
+      }
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload && payload.error
+          ? payload.error
+          : 'The marking service returned an error (HTTP ' + response.status + ').');
+      }
+
+      renderResultOutput(payload);
+    } catch (err) {
+      renderErrorOutput(err && err.message ? err.message : String(err));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML =
+          'Submit for Marking <i class="fa-solid fa-arrow-up-right" aria-hidden="true"></i>';
+      }
+    }
+  }
+
   // =========================================================
-  // OUTPUT PLACEHOLDER
+  // OUTPUT — LOADING / RESULT / ERROR
   // =========================================================
-  function renderPendingOutput() {
+  function renderLoadingOutput() {
     const wrap = document.getElementById('marking-output');
     if (!wrap) return;
 
@@ -306,25 +356,56 @@
     const moduleLine = escapeHtml(MODULE_LABELS[state.moduleKey] || state.moduleKey || '—');
 
     wrap.innerHTML =
-      '<div class="output-placeholder">' +
-        '<div class="output-placeholder-icon">' +
-          '<i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>' +
-        '</div>' +
-        '<h3 class="output-placeholder-heading">Submission received</h3>' +
-        '<p class="output-placeholder-text">' +
-          'The AI marking service is not yet connected. When it is, your mark ' +
-          'sheet for the submission below will appear here.' +
+      '<div class="output-loading" role="status" aria-live="polite">' +
+        '<div class="spinner" aria-hidden="true"></div>' +
+        '<h3 class="output-loading-heading">Marking your submission&hellip;</h3>' +
+        '<p class="output-loading-text">' +
+          'Reviewing <strong>' + fileLine + '</strong> against ' + moduleLine + '. ' +
+          'This usually takes 20–60 seconds.' +
         '</p>' +
-        '<div class="panel panel-accent" ' +
-             'style="text-align:left;max-width:560px;margin:20px auto 0 auto;">' +
-          '<h4 class="panel-heading">' +
-            '<i class="fa-solid fa-file-lines" aria-hidden="true"></i> Submission summary' +
-          '</h4>' +
-          '<ul class="panel-list">' +
-            '<li><strong>File:</strong> ' + fileLine + '</li>' +
-            '<li><strong>Module:</strong> ' + moduleLine + '</li>' +
-          '</ul>' +
-        '</div>' +
+      '</div>';
+  }
+
+  function renderResultOutput(payload) {
+    const wrap = document.getElementById('marking-output');
+    if (!wrap) return;
+
+    const text = payload && payload.mark_sheet
+      ? payload.mark_sheet
+      : '(The marking service returned an empty response.)';
+
+    const usage = payload && payload.usage ? payload.usage : null;
+    const meta  = usage
+      ? 'Model: ' + escapeHtml(payload.model || '—') +
+        ' &middot; Input tokens: ' + (usage.input_tokens || 0) +
+        ' &middot; Output tokens: ' + (usage.output_tokens || 0) +
+        (usage.cache_read_input_tokens
+          ? ' &middot; Cache read: ' + usage.cache_read_input_tokens
+          : '')
+      : '';
+
+    wrap.innerHTML =
+      '<div class="output-result">' +
+        '<h3 class="output-result-heading">' +
+          '<i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> ' +
+          'AI Mark Sheet' +
+        '</h3>' +
+        '<p class="output-result-body">' + escapeHtml(text) + '</p>' +
+        (meta ? '<p class="output-result-meta">' + meta + '</p>' : '') +
+      '</div>';
+  }
+
+  function renderErrorOutput(message) {
+    const wrap = document.getElementById('marking-output');
+    if (!wrap) return;
+
+    wrap.innerHTML =
+      '<div class="output-error" role="alert">' +
+        '<h3 class="output-error-heading">' +
+          '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ' +
+          'Marking failed' +
+        '</h3>' +
+        '<p style="margin:0;">' + escapeHtml(message) + '</p>' +
       '</div>';
   }
 

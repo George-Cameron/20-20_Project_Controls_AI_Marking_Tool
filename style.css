@@ -634,6 +634,95 @@ p {
 }
 
 /* =========================================================
+   LOADING SPINNER  (#E8303A — matches submit button)
+   ========================================================= */
+.output-loading {
+  background-color: var(--color-light-grey);
+  border-left: 3px solid var(--color-marking-red);
+  padding: 56px 32px;
+  text-align: center;
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px auto;
+  border: 5px solid rgba(232, 48, 58, 0.18);
+  border-top-color: var(--color-marking-red);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.output-loading-heading {
+  font-size: 1.15rem;
+  color: var(--color-dark-slate);
+  margin: 0 0 6px 0;
+}
+
+.output-loading-text {
+  color: var(--color-muted);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* Result panel (returned mark sheet) */
+.output-result {
+  background-color: var(--color-white);
+  border-left: 3px solid var(--color-marking-red);
+  box-shadow: var(--shadow-card);
+  padding: 32px 36px;
+}
+
+.output-result-heading {
+  font-size: 1.25rem;
+  color: var(--color-dark-slate);
+  margin: 0 0 16px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.output-result-heading i {
+  color: var(--color-marking-red);
+}
+
+.output-result-body {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--color-body-text);
+  font-size: 0.98rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.output-result-meta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e4ea;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+/* Error panel */
+.output-error {
+  background-color: #fdecee;
+  border-left: 3px solid var(--color-marking-red);
+  padding: 24px 28px;
+  color: #9b1b25;
+}
+.output-error-heading {
+  font-size: 1.05rem;
+  color: #9b1b25;
+  margin: 0 0 6px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* =========================================================
    FOOTER
    ========================================================= */
 .site-footer {
