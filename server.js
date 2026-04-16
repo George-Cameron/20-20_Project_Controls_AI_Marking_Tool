@@ -83,6 +83,69 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE, files: 1 }
 });
 
+// ---------- POST /api/extract-docx-preview ----------
+// Returns the first ~800 characters of extracted text from a .doc/.docx
+// so the user can verify the extraction looks right before spending an
+// expensive Anthropic call. No AI call happens here.
+app.post('/api/extract-docx-preview', (req, res) => {
+  upload.single('file')(req, res, async function (uploadErr) {
+    if (uploadErr) {
+      const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'File is too large. Maximum size is 20MB.'
+        : ('Upload failed: ' + uploadErr.message);
+      return res.status(400).json({ ok: false, error: msg });
+    }
+
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ ok: false, error: 'No file was uploaded.' });
+      }
+      const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+      if (ext !== 'doc' && ext !== 'docx') {
+        return res.status(400).json({
+          ok: false,
+          error: 'This endpoint only accepts .doc or .docx files.'
+        });
+      }
+
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      const fullText = (result && result.value ? result.value : '').trim();
+
+      if (!fullText) {
+        return res.json({
+          ok: true,
+          empty: true,
+          preview: '',
+          char_count: 0,
+          word_count: 0
+        });
+      }
+
+      const PREVIEW_CHARS = 800;
+      const preview = fullText.length > PREVIEW_CHARS
+        ? fullText.slice(0, PREVIEW_CHARS).trim() + '\u2026'
+        : fullText;
+
+      return res.json({
+        ok: true,
+        empty: false,
+        preview: preview,
+        char_count: fullText.length,
+        word_count: fullText.split(/\s+/).filter(Boolean).length,
+        truncated: fullText.length > PREVIEW_CHARS
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[/api/extract-docx-preview] error:', err);
+      return res.status(500).json({
+        ok: false,
+        error: 'Could not extract text from the Word document: ' + (err.message || 'unknown error')
+      });
+    }
+  });
+});
+
 // ---------- POST /api/mark ----------
 app.post('/api/mark', (req, res) => {
   upload.single('file')(req, res, async function (uploadErr) {

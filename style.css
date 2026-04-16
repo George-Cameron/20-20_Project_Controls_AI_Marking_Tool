@@ -478,6 +478,97 @@ p {
   outline: none;
 }
 
+/* ---------- File-size warning (>5MB, under 20MB cap) ---------- */
+.file-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 18px;
+  background-color: #fff7e6;
+  border-left: 3px solid #d99a2b;
+  color: #7a5a10;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.file-warning i {
+  color: #d99a2b;
+  font-size: 1.1rem;
+  margin-top: 2px;
+}
+.file-warning strong {
+  color: #5a440b;
+  margin-right: 4px;
+}
+
+/* ---------- DOCX text preview ---------- */
+.docx-preview {
+  margin-top: 14px;
+  background-color: var(--color-white);
+  border-left: 3px solid var(--color-primary-red);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+}
+
+.docx-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.docx-preview-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-dark-slate);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.docx-preview-title i {
+  color: var(--color-primary-red);
+}
+
+.docx-preview-stats {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+.docx-preview-body {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background-color: var(--color-light-grey);
+  border: 1px solid #e2e4ea;
+  font-family: 'Poppins', Arial, sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--color-body-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.docx-preview-loading {
+  color: var(--color-muted);
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docx-preview-note {
+  margin: 10px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+.docx-preview-empty,
+.docx-preview-failed {
+  color: #9b1b25;
+  font-weight: 500;
+}
+
 /* =========================================================
    MODULE GRID
    ========================================================= */

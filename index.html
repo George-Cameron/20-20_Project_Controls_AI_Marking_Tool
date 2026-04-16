@@ -126,6 +126,39 @@
 
           <!-- Validation message -->
           <p class="dropzone-error" id="dropzone-error" hidden></p>
+
+          <!-- Size warning (shown for files > 5MB but under the 20MB cap) -->
+          <div class="file-warning" id="file-warning" hidden role="alert">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            <div>
+              <strong>Large file.</strong>
+              <span id="file-warning-text">
+                This file is larger than 5MB. Processing may take noticeably longer,
+                and you will be asked to confirm before the submission is sent for marking.
+              </span>
+            </div>
+          </div>
+
+          <!-- DOCX text preview (shown after a .doc or .docx is uploaded) -->
+          <div class="docx-preview" id="docx-preview" hidden>
+            <header class="docx-preview-head">
+              <h4 class="docx-preview-title">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                Extracted text preview
+              </h4>
+              <span class="docx-preview-stats" id="docx-preview-stats"></span>
+            </header>
+            <div class="docx-preview-body" id="docx-preview-body" aria-live="polite">
+              <span class="docx-preview-loading">
+                <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                Extracting text&hellip;
+              </span>
+            </div>
+            <p class="docx-preview-note">
+              Please check this looks right. If the text is missing, jumbled, or
+              truncated, remove the file and upload a different version before marking.
+            </p>
+          </div>
         </div>
 
         <!-- STEP 2 — MODULE SELECTION -->
