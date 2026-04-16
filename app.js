@@ -517,18 +517,6 @@
       ? renderStructuredMarkSheet(sheet)
       : renderRawMarkSheet(rawText);
 
-    const usage = payload && payload.usage ? payload.usage : null;
-    const metaHtml = usage
-      ? '<p class="output-result-meta">' +
-          'Model: ' + escapeHtml(payload.model || '—') +
-          ' &middot; Input tokens: ' + (usage.input_tokens || 0) +
-          ' &middot; Output tokens: ' + (usage.output_tokens || 0) +
-          (usage.cache_read_input_tokens
-            ? ' &middot; Cache read: ' + usage.cache_read_input_tokens
-            : '') +
-        '</p>'
-      : '';
-
     const actionsHtml =
       '<div class="results-actions" role="group" aria-label="Mark sheet actions">' +
         '<button type="button" class="btn btn-marking" data-action="copy-output">' +
@@ -546,7 +534,6 @@
       '<div class="output-result">' +
         headerHtml +
         bodyHtml +
-        metaHtml +
         actionsHtml +
       '</div>';
 
