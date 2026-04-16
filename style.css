@@ -5,17 +5,26 @@
 
 :root {
   /* Brand colours */
-  --color-primary-red: #F4313F;
-  --color-primary-red-dark: #d6222f;
+  /* Primary red — unified to #E8303A across the whole app (header accents,
+     buttons, card accents, error borders, spinner). Previous #F4313F has
+     been retired. */
+  --color-primary-red: #E8303A;
+  --color-primary-red-dark: #c8252e;
+
+  /* Alias kept for readability in older CSS rules. Identical to primary. */
   --color-marking-red: #E8303A;
   --color-marking-red-dark: #c8252e;
+
   --color-dark-navy: #313953;
   --color-dark-slate: #1D253C;
   --color-white: #ffffff;
   --color-light-grey: #f2f2f2;
   --color-border: #d3d6de;
   --color-body-text: #2a2a2a;
-  --color-muted: #6a6f7d;
+
+  /* Secondary / muted grey — brand value #AAAAAA. Used for labels,
+     dividers, metadata, footer copyright, and other non-primary text. */
+  --color-muted: #AAAAAA;
 
   /* Layout tokens */
   --max-width: 1200px;
@@ -1120,24 +1129,102 @@ p {
 
 /* =========================================================
    RESPONSIVE
+   ---------------------------------------------------------
+   Breakpoints:
+     ≥1025px  full desktop (default rules above)
+     769–1024 tablet
+     ≤720px   phone
    ========================================================= */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .container {
+    padding: 0 28px;
+  }
+  .section {
+    padding: 64px 0;
+  }
+  .hero {
+    padding-top: 72px;
+    padding-bottom: 72px;
+  }
+  .hero .section-heading {
+    font-size: 2.2rem;
+  }
+  .section-heading {
+    font-size: 1.85rem;
+  }
+  .module-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .header-title-main {
+    font-size: 1rem;
+  }
+  .header-title-eyebrow {
+    font-size: 0.68rem;
+  }
+  /* Give the criterion cards a bit more breathing room on tablet */
+  .criterion-card {
+    padding: 18px 20px;
+  }
+}
+
+/* Phone */
 @media (max-width: 720px) {
   .header-inner {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+    padding: 14px 20px;
   }
   .header-title {
     text-align: left;
   }
+  .header-logo {
+    height: 38px;
+  }
   .section {
-    padding: 56px 0;
+    padding: 48px 0;
+  }
+  .hero {
+    padding-top: 56px;
+    padding-bottom: 56px;
   }
   .hero .section-heading {
-    font-size: 1.9rem;
+    font-size: 1.75rem;
   }
   .section-heading {
-    font-size: 1.6rem;
+    font-size: 1.5rem;
+  }
+  .module-grid {
+    grid-template-columns: 1fr;
+  }
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+  .btn {
+    padding: 12px 20px;
+    font-size: 0.9rem;
+  }
+  .btn-marking {
+    width: 100%;
+    justify-content: center;
+  }
+  .criterion-card-head {
+    flex-wrap: wrap;
+  }
+  .criterion-card-score {
+    min-width: auto;
+  }
+  .results-actions {
+    flex-direction: column;
+  }
+  .results-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
   .footer-inner {
     flex-direction: column;
@@ -1145,5 +1232,12 @@ p {
   }
   .footer-meta {
     text-align: left;
+  }
+  .result-meta-grid {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+  .result-meta-grid dt {
+    margin-top: 6px;
   }
 }
