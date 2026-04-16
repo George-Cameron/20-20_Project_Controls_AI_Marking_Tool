@@ -22,7 +22,8 @@
     'image/jpg',
     'image/png'
   ];
-  const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
+  const MAX_FILE_BYTES  = 20 * 1024 * 1024;  // hard cap — reject above this
+  const WARN_FILE_BYTES =  5 * 1024 * 1024;  // soft threshold — warn above this
 
   const MODULE_LABELS = {
     'module-a': 'Module A — Introduction to Project Controls',
@@ -150,8 +151,18 @@
     hideDropzoneError();
     state.file = file;
     renderFilePreview(file);
+    showSizeWarning(file);
     showStep('step-module');
     updateSubmitVisibility();
+
+    // If it's a Word document, fetch a text-extraction preview so the
+    // learner can verify before we burn an Anthropic call on it.
+    const ext = (file.name || '').split('.').pop().toLowerCase();
+    if (ext === 'doc' || ext === 'docx') {
+      fetchDocxPreview(file);
+    } else {
+      hideDocxPreview();
+    }
   }
 
   function validateFile(file) {
@@ -205,10 +216,89 @@
 
     if (!keepError) hideDropzoneError();
 
+    hideSizeWarning();
+    hideDocxPreview();
+
     hideStep('step-module');
     clearModuleSelection();
     updateSubmitVisibility();
     resetOutputPlaceholder();
+  }
+
+  // ---- Size warning (>5MB soft cap) ----
+  function showSizeWarning(file) {
+    const el = document.getElementById('file-warning');
+    if (!el) return;
+    if (file.size > WARN_FILE_BYTES) {
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+  function hideSizeWarning() {
+    const el = document.getElementById('file-warning');
+    if (el) el.hidden = true;
+  }
+
+  // ---- DOCX extraction preview ----
+  function fetchDocxPreview(file) {
+    const wrap   = document.getElementById('docx-preview');
+    const body   = document.getElementById('docx-preview-body');
+    const stats  = document.getElementById('docx-preview-stats');
+    if (!wrap || !body) return;
+
+    wrap.hidden = false;
+    stats.textContent = '';
+    body.innerHTML =
+      '<span class="docx-preview-loading">' +
+        '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>' +
+        ' Extracting text&hellip;' +
+      '</span>';
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    fetch('/api/extract-docx-preview', { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      .then(function (out) {
+        const payload = out.body;
+        if (!payload || !payload.ok) {
+          body.innerHTML =
+            '<span class="docx-preview-failed">' +
+              escapeHtml(payload && payload.error
+                ? payload.error
+                : 'Could not extract text from this document.') +
+            '</span>';
+          stats.textContent = '';
+          return;
+        }
+        if (payload.empty) {
+          body.innerHTML =
+            '<span class="docx-preview-empty">' +
+              'No text was found in this document. Please check you uploaded the ' +
+              'correct file — an empty document will not be sent for marking.' +
+            '</span>';
+          stats.textContent = '';
+          return;
+        }
+        body.textContent = payload.preview;
+        stats.textContent =
+          (payload.word_count || 0).toLocaleString() + ' words, ' +
+          (payload.char_count || 0).toLocaleString() + ' characters' +
+          (payload.truncated ? ' (showing first 800 characters)' : '');
+      })
+      .catch(function () {
+        body.innerHTML =
+          '<span class="docx-preview-failed">' +
+            'Preview failed — the server could not be reached. You can still try ' +
+            'to submit; the marking service will extract the text server-side.' +
+          '</span>';
+      });
+  }
+
+  function hideDocxPreview() {
+    const wrap = document.getElementById('docx-preview');
+    if (wrap) wrap.hidden = true;
   }
 
   function showDropzoneError(message) {
@@ -294,9 +384,41 @@
 
   /**
    * Send the file + module to /api/mark, render loading / result / error.
-   * No retry — the server is in charge of upstream retries.
+   * No retry — the server is in charge of upstream retries. The "Try Again"
+   * button in the error panel re-invokes this function.
    */
   async function submitForMarking() {
+    // -- Defensive validation --
+    // The submit button is hidden until file+module are set, but if it's
+    // ever called without both (keyboard trigger, race condition, etc.)
+    // surface a clear, red, accessible error rather than silently failing.
+    if (!state.file) {
+      renderErrorOutput(
+        'No file has been uploaded. Please upload your submission before clicking Submit for Marking.',
+        /*retryable*/ false
+      );
+      scrollToSection('marking-output');
+      return;
+    }
+    if (!state.moduleKey) {
+      renderErrorOutput(
+        'No module has been selected. Please choose a module before clicking Submit for Marking.',
+        /*retryable*/ false
+      );
+      scrollToSection('marking-output');
+      return;
+    }
+
+    // -- Soft-cap confirmation for files >5MB --
+    if (state.file.size > WARN_FILE_BYTES) {
+      const ok = window.confirm(
+        'This file is ' + formatBytes(state.file.size) + ', which is larger than ' +
+        'the recommended 5MB. Marking may take noticeably longer and will use ' +
+        'more API tokens.\n\nDo you want to continue?'
+      );
+      if (!ok) return;
+    }
+
     const btn = document.getElementById('submit-marking-btn');
 
     renderLoadingOutput();
@@ -333,7 +455,10 @@
 
       renderResultOutput(payload);
     } catch (err) {
-      renderErrorOutput(err && err.message ? err.message : String(err));
+      renderErrorOutput(
+        err && err.message ? err.message : String(err),
+        /*retryable*/ true
+      );
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -614,18 +739,50 @@
            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  function renderErrorOutput(message) {
+  function renderErrorOutput(message, retryable) {
     const wrap = document.getElementById('marking-output');
     if (!wrap) return;
+
+    // Only show "Try Again" when the failure could plausibly succeed on
+    // retry (e.g. API / network error). For input-validation errors
+    // (missing file, missing module) it makes no sense — the user needs
+    // to go back and fix the input.
+    const actions = retryable
+      ? '<div class="results-actions" role="group" aria-label="Error actions">' +
+          '<button type="button" class="btn btn-marking" data-action="retry-submit">' +
+            '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Try Again' +
+          '</button>' +
+          '<button type="button" class="btn btn-outline-dark" data-action="new-submission">' +
+            '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to upload' +
+          '</button>' +
+        '</div>'
+      : '<div class="results-actions" role="group" aria-label="Error actions">' +
+          '<button type="button" class="btn btn-marking" data-action="new-submission">' +
+            '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to upload' +
+          '</button>' +
+        '</div>';
 
     wrap.innerHTML =
       '<div class="output-error" role="alert">' +
         '<h3 class="output-error-heading">' +
           '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ' +
-          'Marking failed' +
+          (retryable ? 'Marking failed' : 'Cannot submit') +
         '</h3>' +
-        '<p style="margin:0;">' + escapeHtml(message) + '</p>' +
+        '<p style="margin:0 0 12px 0;">' + escapeHtml(message) + '</p>' +
+        actions +
       '</div>';
+
+    wireErrorActions(wrap);
+  }
+
+  function wireErrorActions(wrap) {
+    wrap.querySelectorAll('[data-action]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const action = btn.getAttribute('data-action');
+        if (action === 'retry-submit')      submitForMarking();
+        else if (action === 'new-submission') handleNewSubmission();
+      });
+    });
   }
 
   function resetOutputPlaceholder() {

@@ -7,7 +7,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test:modules": "node scripts/test-modules.js",
+    "test:modules:api": "node scripts/test-modules.js --api"
   },
   "engines": {
     "node": ">=18.0.0"
