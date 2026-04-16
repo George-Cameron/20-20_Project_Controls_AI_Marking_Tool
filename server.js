@@ -161,7 +161,24 @@ app.post('/api/mark', (req, res) => {
             'Mark the submission above strictly against the official criteria ' +
             'document provided at the top of this message. Follow the system ' +
             'instructions exactly: per-criterion score, justification and ' +
-            'feedback; overall grade; strengths and areas for improvement.'
+            'feedback; overall grade; strengths and areas for improvement.\n\n' +
+            'Return ONLY a single JSON object matching this exact shape — ' +
+            'no markdown code fences, no commentary outside the JSON:\n\n' +
+            '{\n' +
+            '  "criteria": [\n' +
+            '    {\n' +
+            '      "name": "string — name or number of the criterion",\n' +
+            '      "score": "string — e.g. \\"18/20\\" or \\"85%\\"",\n' +
+            '      "justification": "string — why this score was awarded",\n' +
+            '      "feedback": "string — constructive feedback for improvement"\n' +
+            '    }\n' +
+            '  ],\n' +
+            '  "overall_grade": "string — e.g. \\"Distinction\\", \\"Merit\\", \\"Pass\\", \\"Refer\\", or a percentage",\n' +
+            '  "summary": {\n' +
+            '    "strengths": "string — what the learner did well",\n' +
+            '    "areas_for_improvement": "string — what to focus on next"\n' +
+            '  }\n' +
+            '}'
         }
       ];
 
@@ -180,12 +197,17 @@ app.post('/api/mark', (req, res) => {
         .join('\n\n')
         .trim();
 
+      // Try to parse the model's reply as the JSON mark sheet.
+      // The client falls back to rendering raw_text if this is null.
+      const structured = parseMarkSheet(textOut);
+
       return res.json({
         ok: true,
         model: response.model,
         stop_reason: response.stop_reason,
         usage: response.usage,
-        mark_sheet: textOut
+        mark_sheet: structured,
+        raw_text: textOut
       });
 
     } catch (err) {
@@ -269,6 +291,27 @@ async function buildSubmissionBlocks(file, ext) {
 
 function escapeForPrompt(s) {
   return String(s).replace(/[\r\n\t]/g, ' ').slice(0, 200);
+}
+
+/**
+ * Parse the model's reply as the structured mark sheet.
+ * Returns the parsed object, or null if no usable JSON was found.
+ *
+ * Tries a direct JSON.parse first, then a substring slice between the
+ * first `{` and last `}` (handles cases where the model adds preamble
+ * or wraps the JSON in a markdown code fence despite being asked not to).
+ */
+function parseMarkSheet(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  try { return JSON.parse(text); } catch (_) { /* fall through */ }
+
+  const start = text.indexOf('{');
+  const end   = text.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch (_) { /* fall through */ }
+  }
+  return null;
 }
 
 // ---------- Boot ----------

@@ -706,6 +706,262 @@ p {
   color: var(--color-muted);
 }
 
+/* Result header: title + submission/module/date metadata */
+.result-header {
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e2e4ea;
+}
+
+.result-meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 18px;
+  margin: 12px 0 0 0;
+  font-size: 0.92rem;
+}
+.result-meta-grid dt {
+  font-weight: 600;
+  color: var(--color-dark-slate);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  align-self: center;
+}
+.result-meta-grid dd {
+  margin: 0;
+  color: var(--color-body-text);
+}
+
+/* Criteria — card grid */
+.criteria-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.criterion-card {
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-dark-slate);
+  padding: 20px 22px;
+  transition: border-left-color var(--transition);
+}
+.criterion-card:hover {
+  border-left-color: var(--color-marking-red);
+}
+
+.criterion-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edeef2;
+}
+
+.criterion-card-name {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--color-dark-slate);
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.criterion-card-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  padding: 6px 14px;
+  background-color: var(--color-marking-red);
+  color: var(--color-white);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.criterion-card-section + .criterion-card-section {
+  margin-top: 12px;
+}
+
+.criterion-card-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 4px;
+}
+
+.criterion-card-section p {
+  margin: 0;
+  color: var(--color-body-text);
+  line-height: 1.6;
+}
+
+/* Overall grade box — highlighted, #E8303A accent */
+.overall-box {
+  background-color: var(--color-light-grey);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-marking-red);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+}
+
+.overall-box-grade {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(29, 37, 60, 0.12);
+}
+
+.overall-box-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-dark-slate);
+}
+
+.overall-box-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-marking-red);
+  line-height: 1.1;
+}
+
+.overall-box-section + .overall-box-section {
+  margin-top: 14px;
+}
+
+.overall-box-section h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--color-dark-slate);
+}
+
+.overall-box-section p {
+  margin: 0;
+  color: var(--color-body-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Action buttons under the result */
+.results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e4ea;
+}
+
+/* Fallback notice — shown when JSON parse failed */
+.result-fallback-notice {
+  background-color: #fff5f5;
+  border-left: 3px solid var(--color-marking-red);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 0.92rem;
+  color: var(--color-dark-slate);
+}
+.result-fallback-notice i {
+  color: var(--color-marking-red);
+  margin-right: 6px;
+}
+
+/* =========================================================
+   PRINT  (clean printable mark sheet)
+   ========================================================= */
+@media print {
+  /* Hide every chrome element — keep only the result */
+  .site-header,
+  .site-footer,
+  .hero,
+  #how-it-works,
+  #step-upload,
+  #step-module,
+  #step-submit,
+  #marking-tool > .container > .section-heading,
+  #marking-tool > .container > .section-lead,
+  .results-actions,
+  .output-result-meta {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000;
+    font-size: 11pt;
+  }
+
+  .section,
+  .section-light,
+  .section-grey {
+    background: #ffffff !important;
+    padding: 0 !important;
+  }
+
+  .container {
+    max-width: none;
+    padding: 0;
+  }
+
+  .marking-output {
+    margin-top: 0;
+  }
+
+  .output-result {
+    box-shadow: none !important;
+    border: none !important;
+    border-left: 3px solid var(--color-marking-red) !important;
+    padding: 0 0 0 14px;
+    /* Force colour-accurate printing in supporting browsers */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .criterion-card,
+  .overall-box {
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .criterion-card {
+    border: 1px solid #888 !important;
+    border-left: 3px solid var(--color-marking-red) !important;
+    margin-bottom: 10pt;
+  }
+
+  .overall-box {
+    background: #ffffff !important;
+    border: 1px solid #888 !important;
+    border-left: 4px solid var(--color-marking-red) !important;
+    page-break-before: auto;
+  }
+
+  .criterion-card-score,
+  .overall-box-value {
+    color: var(--color-marking-red) !important;
+    background: transparent !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* Error panel */
 .output-error {
   background-color: #fdecee;
