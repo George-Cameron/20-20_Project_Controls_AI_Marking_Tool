@@ -1,0 +1,21 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# When this repo is connected to Render, this file tells Render exactly how
+# to build and run the service. Render picks it up automatically; you do not
+# need to configure anything in the dashboard except the API key.
+
+services:
+  - type: web
+    name: 2020-pm-ai-marking-companion
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # Must be set manually in the Render dashboard after first deploy.
+      # Never commit the real key to git.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Pin Node to the current LTS. Matches the `engines` field in package.json.
+      - key: NODE_VERSION
+        value: "20"

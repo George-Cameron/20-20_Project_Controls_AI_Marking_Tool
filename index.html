@@ -94,102 +94,100 @@
     <section class="section section-light" id="marking-tool">
       <div class="container">
         <h2 class="section-heading">Submit your work for marking</h2>
-        <p class="section-lead">Complete each step below. Your submission is assessed against our official Project Controls criteria.</p>
+        <p class="section-lead">Upload your submission, choose the module it belongs to, then send it for AI marking against the official Project Controls criteria.</p>
 
-        <div class="tool-layout">
+        <!-- STEP 1 — UPLOAD -->
+        <div class="marking-step" id="step-upload">
+          <span class="step-label"><span class="step-num">1</span> Upload your submission</span>
 
-          <!-- LEFT: submission form -->
-          <form class="tool-form card" id="marking-form" novalidate>
-            <div class="form-group">
-              <label class="form-label" for="learner-name">Learner name</label>
-              <input class="form-input" type="text" id="learner-name" name="learner-name" placeholder="e.g. Alex Morgan" required />
+          <div class="dropzone" id="dropzone" tabindex="0" role="button"
+               aria-label="Drag and drop a file here, or click to browse">
+            <input type="file" id="file-input" class="dropzone-input"
+                   accept=".pdf,.doc,.docx,image/jpeg,image/jpg,image/png" />
+            <div class="dropzone-inner">
+              <div class="dropzone-icon"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i></div>
+              <p class="dropzone-primary">Drag &amp; drop your file here</p>
+              <p class="dropzone-secondary">or <span class="dropzone-browse">click to browse</span></p>
+              <p class="dropzone-meta">Accepted formats: PDF, DOCX, JPG, PNG &middot; Max 20MB</p>
             </div>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label" for="module-select">Module</label>
-              <select class="form-input" id="module-select" name="module" required>
-                <option value="" disabled selected>Select a module&hellip;</option>
-                <option value="module-a">Module A &mdash; Introduction to Project Controls</option>
-                <option value="module-b">Module B &mdash; Planning &amp; Scheduling</option>
-                <option value="module-c">Module C &mdash; Cost Management</option>
-                <option value="module-d">Module D &mdash; Risk Management</option>
-                <option value="module-e">Module E &mdash; Earned Value Management</option>
-                <option value="module-f">Module F &mdash; Change &amp; Configuration Control</option>
-                <option value="module-g">Module G &mdash; Reporting &amp; Analysis</option>
-                <option value="module-h">Module H &mdash; Integrated Project Controls</option>
-              </select>
+          <!-- File preview (shown once a file is selected) -->
+          <div class="file-preview" id="file-preview" hidden>
+            <div class="file-preview-icon"><i class="fa-solid fa-file-lines" aria-hidden="true"></i></div>
+            <div class="file-preview-meta">
+              <span class="file-preview-name" id="file-preview-name"></span>
+              <span class="file-preview-size" id="file-preview-size"></span>
             </div>
+            <button type="button" class="file-preview-remove" id="file-remove-btn" aria-label="Remove file">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label" for="submission-file">Upload submission (PDF or DOCX)</label>
-              <input class="form-input" type="file" id="submission-file" name="submission" accept=".pdf,.doc,.docx" required />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="submission-notes">Notes for the marker (optional)</label>
-              <textarea class="form-input" id="submission-notes" name="notes" rows="4" placeholder="Anything you would like the marker to focus on&hellip;"></textarea>
-            </div>
-
-            <div class="button-row">
-              <button class="btn btn-primary" type="submit" id="submit-btn">
-                Mark my submission
-                <i class="fa-solid fa-arrow-up-right" aria-hidden="true"></i>
-              </button>
-              <button class="btn btn-outline btn-outline-dark" type="reset">
-                Clear form
-                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-              </button>
-            </div>
-          </form>
-
-          <!-- RIGHT: context / help panel -->
-          <aside class="tool-aside">
-            <div class="panel panel-accent">
-              <h3 class="panel-heading"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Before you submit</h3>
-              <ul class="panel-list">
-                <li>Ensure your submission matches the chosen module.</li>
-                <li>Include your learner ID on the cover page.</li>
-                <li>Remove any personal data you do not wish to share.</li>
-                <li>Files up to 20MB are supported.</li>
-              </ul>
-            </div>
-
-            <div class="panel panel-accent">
-              <h3 class="panel-heading"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> About AI marking</h3>
-              <p>
-                This tool provides formative feedback aligned to 20/20 Project Management's
-                published criteria. It does not replace the final tutor review used for
-                certification.
-              </p>
-            </div>
-          </aside>
-
-        </div>
-      </div>
-    </section>
-
-    <!-- =======================================================
-         RESULTS
-         ======================================================= -->
-    <section class="section section-grey" id="results-section" hidden>
-      <div class="container">
-        <h2 class="section-heading">Your AI Mark Sheet</h2>
-        <p class="section-lead">Generated from your submission against the official module criteria.</p>
-
-        <div class="card results-card" id="results-card">
-          <!-- Populated by app.js -->
+          <!-- Validation message -->
+          <p class="dropzone-error" id="dropzone-error" hidden></p>
         </div>
 
-        <div class="button-row">
-          <button class="btn btn-primary" id="download-results-btn" type="button">
-            Download mark sheet
+        <!-- STEP 2 — MODULE SELECTION -->
+        <div class="marking-step" id="step-module" hidden>
+          <span class="step-label"><span class="step-num">2</span> Choose the module</span>
+
+          <div class="module-grid" id="module-grid" role="radiogroup" aria-label="Select a module">
+            <button type="button" class="module-card" data-module="module-a" role="radio" aria-checked="false">
+              <span class="module-letter">A</span>
+              <span class="module-name">Introduction to Project Controls</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-b" role="radio" aria-checked="false">
+              <span class="module-letter">B</span>
+              <span class="module-name">Planning &amp; Scheduling</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-c" role="radio" aria-checked="false">
+              <span class="module-letter">C</span>
+              <span class="module-name">Cost Management</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-d" role="radio" aria-checked="false">
+              <span class="module-letter">D</span>
+              <span class="module-name">Risk Management</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-e" role="radio" aria-checked="false">
+              <span class="module-letter">E</span>
+              <span class="module-name">Earned Value Management</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-f" role="radio" aria-checked="false">
+              <span class="module-letter">F</span>
+              <span class="module-name">Change &amp; Configuration Control</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-g" role="radio" aria-checked="false">
+              <span class="module-letter">G</span>
+              <span class="module-name">Reporting &amp; Analysis</span>
+            </button>
+            <button type="button" class="module-card" data-module="module-h" role="radio" aria-checked="false">
+              <span class="module-letter">H</span>
+              <span class="module-name">Integrated Project Controls</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3 — SUBMIT -->
+        <div class="marking-step" id="step-submit" hidden>
+          <button type="button" class="btn btn-marking" id="submit-marking-btn">
+            Submit for Marking
             <i class="fa-solid fa-arrow-up-right" aria-hidden="true"></i>
           </button>
-          <button class="btn btn-outline btn-outline-dark" id="new-submission-btn" type="button">
-            New submission
-            <i class="fa-solid fa-plus" aria-hidden="true"></i>
-          </button>
         </div>
+
+        <!-- STEP 4 — OUTPUT PLACEHOLDER -->
+        <div class="marking-output" id="marking-output">
+          <div class="output-placeholder" id="output-placeholder">
+            <div class="output-placeholder-icon"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></div>
+            <h3 class="output-placeholder-heading">Your AI-generated mark sheet will appear here</h3>
+            <p class="output-placeholder-text">
+              Once you submit your work, the Project Controls AI Marking Companion will review it
+              against the official module criteria and return your structured feedback in this panel.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
 
