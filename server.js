@@ -86,18 +86,20 @@ const ACCEPTED = {
 };
 
 // ---------- API key ----------
+// Warn at boot if missing, but don't crash — the frontend should still
+// load so the user can see the tool. The key is checked at request time
+// in each API endpoint, which returns a clear error message.
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
-  // Fail loudly at boot rather than at the first request.
   // eslint-disable-next-line no-console
-  console.error(
-    '\n[startup error] ANTHROPIC_API_KEY is not set.\n' +
-    'Set it in your environment or in a .env file before starting the server.\n'
+  console.warn(
+    '\n[warning] ANTHROPIC_API_KEY is not set.\n' +
+    'The frontend will load but marking requests will fail.\n' +
+    'Set it in your environment or in a .env file.\n'
   );
-  process.exit(1);
 }
 
-const anthropic = new Anthropic({ apiKey });
+var anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
 // ---------- App ----------
 const app = express();
@@ -189,6 +191,13 @@ app.post('/api/mark', (req, res) => {
       const file      = req.file;
 
       // ----- Validate inputs -----
+      if (!anthropic) {
+        return res.status(503).json({
+          ok: false,
+          error: 'The ANTHROPIC_API_KEY environment variable is not configured on the server. ' +
+                 'Please ask the administrator to add it in the Render dashboard under Environment.'
+        });
+      }
       if (!file) {
         return res.status(400).json({ ok: false, error: 'No file was uploaded.' });
       }
