@@ -519,7 +519,10 @@
 
     const actionsHtml =
       '<div class="results-actions" role="group" aria-label="Mark sheet actions">' +
-        '<button type="button" class="btn btn-marking" data-action="copy-output">' +
+        '<button type="button" class="btn btn-marking" data-action="download-marked-pdf">' +
+          '<i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i> Download Marked PDF' +
+        '</button>' +
+        '<button type="button" class="btn btn-outline-dark" data-action="copy-output">' +
           '<i class="fa-solid fa-copy" aria-hidden="true"></i> Copy Output' +
         '</button>' +
         '<button type="button" class="btn btn-outline-dark" data-action="new-submission">' +
@@ -668,11 +671,68 @@
     buttons.forEach(function (btn) {
       btn.addEventListener('click', function () {
         const action = btn.getAttribute('data-action');
-        if (action === 'copy-output')      handleCopyOutput(btn);
-        else if (action === 'new-submission') handleNewSubmission();
-        else if (action === 'print-output')   window.print();
+        if (action === 'download-marked-pdf') handleDownloadMarkedPdf(btn);
+        else if (action === 'copy-output')      handleCopyOutput(btn);
+        else if (action === 'new-submission')    handleNewSubmission();
+        else if (action === 'print-output')      window.print();
       });
     });
+  }
+
+  async function handleDownloadMarkedPdf(button) {
+    const wrap = document.getElementById('marking-output');
+    const data = wrap && wrap._lastResult;
+    if (!data || !state.file) return;
+
+    var original = button.innerHTML;
+    button.innerHTML =
+      '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Generating PDF&hellip;';
+    button.disabled = true;
+
+    try {
+      var fd = new FormData();
+      fd.append('file', state.file);
+      fd.append('module', state.moduleKey || '');
+      fd.append('mark_sheet', JSON.stringify(data.sheet || {}));
+
+      var response = await fetch('/api/generate-marked-pdf', {
+        method: 'POST',
+        body: fd
+      });
+
+      if (!response.ok) {
+        var errBody;
+        try { errBody = await response.json(); } catch (_) { /* ignore */ }
+        throw new Error(
+          errBody && errBody.error
+            ? errBody.error
+            : 'Server returned HTTP ' + response.status
+        );
+      }
+
+      var blob = await response.blob();
+      var baseName = state.file.name.replace(/\.[^.]+$/, '');
+      var downloadName = baseName + '-Marked.pdf';
+
+      var url = URL.createObjectURL(blob);
+      var a   = document.createElement('a');
+      a.href = url;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      button.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Downloaded';
+      setTimeout(function () {
+        button.innerHTML = original;
+        button.disabled = false;
+      }, 2000);
+    } catch (err) {
+      button.innerHTML = original;
+      button.disabled = false;
+      alert('Could not generate the marked PDF:\n\n' + (err.message || String(err)));
+    }
   }
 
   function handleCopyOutput(button) {

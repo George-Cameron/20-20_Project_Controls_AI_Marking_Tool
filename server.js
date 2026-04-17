@@ -15,10 +15,11 @@ const path    = require('path');
 const fs      = require('fs');
 const os      = require('os');
 const { execFileSync } = require('child_process');
-const express = require('express');
-const multer  = require('multer');
-const mammoth = require('mammoth');
-const Anthropic = require('@anthropic-ai/sdk');
+const express    = require('express');
+const multer     = require('multer');
+const mammoth    = require('mammoth');
+const { PDFDocument } = require('pdf-lib');
+const Anthropic  = require('@anthropic-ai/sdk');
 
 // ---------- Configuration ----------
 const PORT          = parseInt(process.env.PORT || '3000', 10);
@@ -327,6 +328,90 @@ app.post('/api/mark', (req, res) => {
   });
 });
 
+// ---------- POST /api/generate-marked-pdf ----------
+// Merges the original submission (as PDF) with a styled feedback/rubric
+// document generated from the mark_sheet JSON. Returns a downloadable
+// PDF named "<original>-Marked.pdf".
+app.post('/api/generate-marked-pdf', (req, res) => {
+  upload.single('file')(req, res, async function (uploadErr) {
+    if (uploadErr) {
+      return res.status(400).json({ ok: false, error: 'Upload failed: ' + uploadErr.message });
+    }
+
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ ok: false, error: 'No file was uploaded.' });
+      }
+
+      let markSheet;
+      try {
+        markSheet = JSON.parse(req.body.mark_sheet || '{}');
+      } catch (_) {
+        return res.status(400).json({ ok: false, error: 'Invalid mark_sheet JSON.' });
+      }
+
+      const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+
+      // 1. Get the original submission as a PDF buffer.
+      var originalPdf;
+      if (ext === 'pdf') {
+        originalPdf = file.buffer;
+      } else if (ext === 'doc' || ext === 'docx') {
+        originalPdf = convertDocxToPdf(file.buffer, file.originalname);
+        if (!originalPdf) {
+          return res.status(500).json({
+            ok: false,
+            error: 'Could not convert the Word document to PDF. LibreOffice may not be available.'
+          });
+        }
+      } else if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') {
+        originalPdf = convertImageToPdf(file.buffer, file.originalname, ext);
+        if (!originalPdf) {
+          return res.status(500).json({
+            ok: false,
+            error: 'Could not convert the image to PDF.'
+          });
+        }
+      } else {
+        return res.status(400).json({ ok: false, error: 'Unsupported file type.' });
+      }
+
+      // 2. Generate the feedback document as HTML, then convert to PDF.
+      const feedbackHtml = buildFeedbackHtml(markSheet, file.originalname, req.body.module || '');
+      const feedbackPdf  = convertHtmlToPdf(feedbackHtml, 'feedback.html');
+      if (!feedbackPdf) {
+        return res.status(500).json({
+          ok: false,
+          error: 'Could not generate the feedback PDF. LibreOffice may not be available.'
+        });
+      }
+
+      // 3. Merge: original submission + feedback pages.
+      const mergedPdf = await mergePdfs([originalPdf, feedbackPdf]);
+
+      // 4. Return as a downloadable file.
+      const baseName = file.originalname.replace(/\.[^.]+$/, '');
+      const downloadName = baseName + '-Marked.pdf';
+
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="' + downloadName.replace(/"/g, '\\"') + '"',
+        'Content-Length': mergedPdf.length
+      });
+      return res.send(mergedPdf);
+
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[/api/generate-marked-pdf] error:', err);
+      return res.status(500).json({
+        ok: false,
+        error: 'Failed to generate the marked PDF: ' + (err.message || 'unknown error')
+      });
+    }
+  });
+});
+
 // ---------- Helpers ----------
 
 /**
@@ -483,6 +568,179 @@ function parseMarkSheet(text) {
     try { return JSON.parse(text.slice(start, end + 1)); } catch (_) { /* fall through */ }
   }
   return null;
+}
+
+/**
+ * Wrap a raw image buffer in a minimal HTML page so LibreOffice can
+ * convert it to a single-page PDF.
+ */
+function convertImageToPdf(buffer, originalName, ext) {
+  var mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+  var b64  = buffer.toString('base64');
+  var html =
+    '<!DOCTYPE html><html><head><style>' +
+    'body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;}' +
+    'img{max-width:100%;max-height:100vh;}' +
+    '</style></head><body>' +
+    '<img src="data:' + mime + ';base64,' + b64 + '"/>' +
+    '</body></html>';
+  return convertHtmlToPdf(html, originalName + '.html');
+}
+
+/**
+ * Convert an HTML string to PDF via LibreOffice headless.
+ * Returns a Buffer, or null if LibreOffice is unavailable.
+ */
+function convertHtmlToPdf(html, tempName) {
+  var tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'html2pdf-'));
+  var safeName = (tempName || 'doc.html').replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safeName.endsWith('.html')) safeName += '.html';
+  var inputPath = path.join(tmpDir, safeName);
+
+  try {
+    fs.writeFileSync(inputPath, html, 'utf8');
+
+    execFileSync('libreoffice', [
+      '--headless',
+      '--convert-to', 'pdf',
+      '--outdir', tmpDir,
+      inputPath
+    ], { timeout: 30000, stdio: 'pipe' });
+
+    var pdfName = safeName.replace(/\.html$/, '.pdf');
+    var pdfPath = path.join(tmpDir, pdfName);
+
+    if (!fs.existsSync(pdfPath)) return null;
+    return fs.readFileSync(pdfPath);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[convertHtmlToPdf]', err.message || err);
+    return null;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+  }
+}
+
+/**
+ * Merge an array of PDF buffers into a single PDF using pdf-lib.
+ */
+async function mergePdfs(pdfBuffers) {
+  var merged = await PDFDocument.create();
+  for (var i = 0; i < pdfBuffers.length; i++) {
+    var doc   = await PDFDocument.load(pdfBuffers[i]);
+    var pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(function (page) { merged.addPage(page); });
+  }
+  return Buffer.from(await merged.save());
+}
+
+/**
+ * Build a complete HTML document containing the styled feedback,
+ * completed rubric table, overall grade, and summary. Designed to
+ * be converted to PDF by LibreOffice and appended after the original
+ * submission.
+ */
+function buildFeedbackHtml(sheet, fileName, moduleKey) {
+  var criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
+  var rubric   = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
+  var summary  = sheet.summary || {};
+  var moduleLabel = MODULE_FILES[moduleKey]
+    ? moduleKey.replace('-', ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); })
+    : (moduleKey || '');
+
+  var esc = function (s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  };
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/>' +
+    '<style>' +
+    '@page { margin: 25mm 20mm; }' +
+    'body { font-family: Arial, Helvetica, sans-serif; color: #2a2a2a; font-size: 11pt; line-height: 1.55; }' +
+    'h1 { color: #1D253C; font-size: 16pt; border-bottom: 3px solid #E8303A; padding-bottom: 8px; margin-bottom: 4px; }' +
+    '.meta { color: #AAAAAA; font-size: 9pt; margin-bottom: 24px; }' +
+    'h2 { color: #1D253C; font-size: 13pt; margin-top: 28px; margin-bottom: 10px; }' +
+    'h3 { color: #1D253C; font-size: 11pt; margin: 0 0 4px 0; }' +
+    '.criterion { margin-bottom: 18px; border-left: 3px solid #E8303A; padding-left: 14px; }' +
+    '.score { display: inline-block; background: #E8303A; color: #fff; padding: 2px 10px; font-weight: bold; font-size: 10pt; margin-bottom: 6px; }' +
+    '.label { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; color: #AAAAAA; margin-top: 8px; margin-bottom: 2px; }' +
+    'table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 10pt; }' +
+    'th { background: #1D253C; color: #fff; padding: 7px 10px; text-align: left; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.06em; }' +
+    'td { padding: 7px 10px; border: 1px solid #d3d6de; vertical-align: top; }' +
+    'tr:nth-child(even) { background: #f2f2f2; }' +
+    '.awarded { color: #E8303A; font-weight: bold; text-align: center; }' +
+    '.available { text-align: center; }' +
+    '.overall { background: #f2f2f2; border-left: 4px solid #E8303A; padding: 16px 18px; margin-top: 28px; }' +
+    '.grade { color: #E8303A; font-size: 18pt; font-weight: bold; margin: 4px 0 12px 0; }' +
+    '.section-head { font-weight: bold; color: #1D253C; margin: 12px 0 4px 0; }' +
+    '</style></head><body>';
+
+  // Header
+  html += '<h1>Assessment Feedback &mdash; 20/20 Project Management</h1>';
+  html += '<p class="meta">' + esc(fileName) + ' &middot; ' + esc(moduleLabel) + '</p>';
+
+  // Detailed criteria
+  if (criteria.length > 0) {
+    html += '<h2>Detailed Feedback</h2>';
+    criteria.forEach(function (c, i) {
+      var name          = (c && c.name)          ? String(c.name)          : ('Criterion ' + (i + 1));
+      var score         = (c && c.score)         ? String(c.score)         : '';
+      var justification = (c && c.justification) ? String(c.justification) : '';
+      var feedback      = (c && c.feedback)      ? String(c.feedback)      : '';
+
+      html += '<div class="criterion">';
+      html += '<h3>' + esc(name) + '</h3>';
+      if (score) html += '<span class="score">' + esc(score) + '</span>';
+      if (justification) {
+        html += '<p class="label">Justification</p>';
+        html += '<p>' + esc(justification) + '</p>';
+      }
+      if (feedback) {
+        html += '<p class="label">Feedback</p>';
+        html += '<p>' + esc(feedback) + '</p>';
+      }
+      html += '</div>';
+    });
+  }
+
+  // Completed rubric
+  if (rubric.length > 0) {
+    html += '<h2>Completed Marking Rubric</h2>';
+    html += '<table><thead><tr>' +
+      '<th>Criterion</th><th>Available</th><th>Awarded</th><th>Comments</th>' +
+      '</tr></thead><tbody>';
+    rubric.forEach(function (r) {
+      var criterion = (r && r.criterion)       ? String(r.criterion)       : '';
+      var available = (r && r.marks_available) ? String(r.marks_available) : '';
+      var awarded   = (r && r.marks_awarded)   ? String(r.marks_awarded)   : '';
+      var comments  = (r && r.comments)        ? String(r.comments)        : '';
+      html += '<tr>' +
+        '<td><strong>' + esc(criterion) + '</strong></td>' +
+        '<td class="available">' + esc(available) + '</td>' +
+        '<td class="awarded">' + esc(awarded) + '</td>' +
+        '<td>' + esc(comments) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Overall grade + summary
+  html += '<div class="overall">';
+  html += '<p class="label">Overall Grade</p>';
+  html += '<p class="grade">' + esc(sheet.overall_grade || '—') + '</p>';
+  if (summary.strengths) {
+    html += '<p class="section-head">Strengths</p>';
+    html += '<p>' + esc(String(summary.strengths)) + '</p>';
+  }
+  if (summary.areas_for_improvement) {
+    html += '<p class="section-head">Areas for Improvement</p>';
+    html += '<p>' + esc(String(summary.areas_for_improvement)) + '</p>';
+  }
+  html += '</div>';
+
+  html += '</body></html>';
+  return html;
 }
 
 // ---------- Boot ----------
