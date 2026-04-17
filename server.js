@@ -17,7 +17,6 @@ const os      = require('os');
 const { execFileSync } = require('child_process');
 const express    = require('express');
 const multer     = require('multer');
-const mammoth    = require('mammoth');
 const { PDFDocument } = require('pdf-lib');
 const Anthropic  = require('@anthropic-ai/sdk');
 
@@ -78,8 +77,6 @@ const MODULE_FILES = {
 // Accepted submission types (extension + MIME)
 const ACCEPTED = {
   pdf:  { mime: 'application/pdf' },
-  doc:  { mime: 'application/msword' },
-  docx: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
   jpg:  { mime: 'image/jpeg' },
   jpeg: { mime: 'image/jpeg' },
   png:  { mime: 'image/png' }
@@ -111,69 +108,6 @@ app.use(express.static(ROOT_DIR, { index: 'index.html' }));
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 }
-});
-
-// ---------- POST /api/extract-docx-preview ----------
-// Returns the first ~800 characters of extracted text from a .doc/.docx
-// so the user can verify the extraction looks right before spending an
-// expensive Anthropic call. No AI call happens here.
-app.post('/api/extract-docx-preview', (req, res) => {
-  upload.single('file')(req, res, async function (uploadErr) {
-    if (uploadErr) {
-      const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
-        ? 'File is too large. Maximum size is 20MB.'
-        : ('Upload failed: ' + uploadErr.message);
-      return res.status(400).json({ ok: false, error: msg });
-    }
-
-    try {
-      const file = req.file;
-      if (!file) {
-        return res.status(400).json({ ok: false, error: 'No file was uploaded.' });
-      }
-      const ext = (file.originalname.split('.').pop() || '').toLowerCase();
-      if (ext !== 'doc' && ext !== 'docx') {
-        return res.status(400).json({
-          ok: false,
-          error: 'This endpoint only accepts .doc or .docx files.'
-        });
-      }
-
-      const result = await mammoth.extractRawText({ buffer: file.buffer });
-      const fullText = (result && result.value ? result.value : '').trim();
-
-      if (!fullText) {
-        return res.json({
-          ok: true,
-          empty: true,
-          preview: '',
-          char_count: 0,
-          word_count: 0
-        });
-      }
-
-      const PREVIEW_CHARS = 800;
-      const preview = fullText.length > PREVIEW_CHARS
-        ? fullText.slice(0, PREVIEW_CHARS).trim() + '\u2026'
-        : fullText;
-
-      return res.json({
-        ok: true,
-        empty: false,
-        preview: preview,
-        char_count: fullText.length,
-        word_count: fullText.split(/\s+/).filter(Boolean).length,
-        truncated: fullText.length > PREVIEW_CHARS
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[/api/extract-docx-preview] error:', err);
-      return res.status(500).json({
-        ok: false,
-        error: 'Could not extract text from the Word document: ' + (err.message || 'unknown error')
-      });
-    }
-  });
 });
 
 // ---------- POST /api/mark ----------
@@ -209,7 +143,7 @@ app.post('/api/mark', (req, res) => {
       if (!ACCEPTED[ext]) {
         return res.status(400).json({
           ok: false,
-          error: 'Unsupported file type. Accepted: PDF, DOC, DOCX, JPG, PNG.'
+          error: 'Unsupported file type. Accepted: PDF, JPG, PNG.'
         });
       }
 
@@ -366,14 +300,6 @@ app.post('/api/generate-marked-pdf', (req, res) => {
       var originalPdf;
       if (ext === 'pdf') {
         originalPdf = file.buffer;
-      } else if (ext === 'doc' || ext === 'docx') {
-        originalPdf = convertDocxToPdf(file.buffer, file.originalname);
-        if (!originalPdf) {
-          return res.status(500).json({
-            ok: false,
-            error: 'Could not convert the Word document to PDF. LibreOffice may not be available.'
-          });
-        }
       } else if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') {
         originalPdf = convertImageToPdf(file.buffer, file.originalname, ext);
         if (!originalPdf) {
@@ -430,10 +356,6 @@ app.post('/api/generate-marked-pdf', (req, res) => {
  *
  *   PDF        → document (base64)
  *   PNG / JPG  → image    (base64)
- *   DOC / DOCX → converted to PDF via LibreOffice, then sent as a
- *                 document block so Claude reads text AND embedded images.
- *                 Falls back to mammoth text-only extraction if
- *                 LibreOffice is not installed (local dev convenience).
  */
 async function buildSubmissionBlocks(file, ext) {
   if (ext === 'pdf') {
@@ -459,100 +381,8 @@ async function buildSubmissionBlocks(file, ext) {
     }];
   }
 
-  if (ext === 'doc' || ext === 'docx') {
-    // Try LibreOffice conversion first (preserves images + formatting).
-    // Fall back to mammoth text-only extraction if LO isn't available,
-    // so local dev without LibreOffice still works.
-    const pdfBuffer = convertDocxToPdf(file.buffer, file.originalname);
-
-    if (pdfBuffer) {
-      return [{
-        type: 'document',
-        source: {
-          type: 'base64',
-          media_type: 'application/pdf',
-          data: pdfBuffer.toString('base64')
-        },
-        title: file.originalname + ' (converted to PDF)'
-      }];
-    }
-
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[buildSubmissionBlocks] LibreOffice not available — ' +
-      'falling back to mammoth text extraction for ' + file.originalname
-    );
-
-    let text;
-    try {
-      const result = await mammoth.extractRawText({ buffer: file.buffer });
-      text = (result && result.value) ? result.value.trim() : '';
-    } catch (extractErr) {
-      throw new Error(
-        'Could not extract text from Word document: ' + extractErr.message
-      );
-    }
-    if (!text) {
-      throw new Error('The Word document appears to be empty.');
-    }
-    return [{
-      type: 'text',
-      text: 'Learner submission (extracted text — images in the original document ' +
-            'could not be included because LibreOffice is not installed on this ' +
-            'server):\n\n' + text
-    }];
-  }
-
   // Should be unreachable thanks to upstream validation.
   throw new Error('Unsupported file extension: ' + ext);
-}
-
-/**
- * Convert a DOCX/DOC buffer to PDF using LibreOffice in headless mode.
- * Returns a Buffer containing the PDF, or null if LibreOffice is not
- * installed or the conversion fails.
- *
- * The function is synchronous (execFileSync) because the conversion is
- * fast for typical assignment-sized documents (<10s) and keeps the
- * calling code simple. A temp directory is used and cleaned up
- * regardless of outcome.
- */
-function convertDocxToPdf(buffer, originalName) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-convert-'));
-  const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const inputPath = path.join(tmpDir, safeName);
-
-  try {
-    fs.writeFileSync(inputPath, buffer);
-
-    execFileSync('libreoffice', [
-      '--headless',
-      '--convert-to', 'pdf',
-      '--outdir', tmpDir,
-      inputPath
-    ], {
-      timeout: 30000,   // 30s safety cap
-      stdio: 'pipe'     // don't leak LO output to stdout
-    });
-
-    // LibreOffice writes <name>.pdf alongside the input file.
-    const pdfName = safeName.replace(/\.[^.]+$/, '.pdf');
-    const pdfPath = path.join(tmpDir, pdfName);
-
-    if (!fs.existsSync(pdfPath)) {
-      return null;
-    }
-
-    return fs.readFileSync(pdfPath);
-  } catch (err) {
-    // LibreOffice not installed, or conversion failed.
-    // eslint-disable-next-line no-console
-    console.warn('[convertDocxToPdf]', err.message || err);
-    return null;
-  } finally {
-    // Clean up the temp directory.
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* ignore */ }
-  }
 }
 
 function escapeForPrompt(s) {

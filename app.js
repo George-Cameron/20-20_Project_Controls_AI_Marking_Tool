@@ -13,11 +13,9 @@
   'use strict';
 
   // -------- Configuration --------
-  const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
+  const ACCEPTED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
   const ACCEPTED_MIME_TYPES = [
     'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/jpeg',
     'image/jpg',
     'image/png'
@@ -154,15 +152,6 @@
     showSizeWarning(file);
     showStep('step-module');
     updateSubmitVisibility();
-
-    // If it's a Word document, fetch a text-extraction preview so the
-    // learner can verify before we burn an Anthropic call on it.
-    const ext = (file.name || '').split('.').pop().toLowerCase();
-    if (ext === 'doc' || ext === 'docx') {
-      fetchDocxPreview(file);
-    } else {
-      hideDocxPreview();
-    }
   }
 
   function validateFile(file) {
@@ -175,9 +164,9 @@
     const extOk  = ACCEPTED_EXTENSIONS.indexOf(ext) !== -1;
     const mimeOk = ACCEPTED_MIME_TYPES.indexOf(mime) !== -1;
 
-    // Some browsers leave MIME blank for .docx — accept if the extension is valid.
+    // Some browsers leave MIME blank — accept if the extension is valid.
     if (!extOk && !mimeOk) {
-      return 'Unsupported file type. Please upload a PDF, DOCX, JPG, or PNG file.';
+      return 'Unsupported file type. Please upload a PDF, JPG, or PNG file.';
     }
     if (file.size > MAX_FILE_BYTES) {
       return 'File is too large. The maximum size is 20MB.';
@@ -217,7 +206,6 @@
     if (!keepError) hideDropzoneError();
 
     hideSizeWarning();
-    hideDocxPreview();
 
     hideStep('step-module');
     clearModuleSelection();
@@ -238,67 +226,6 @@
   function hideSizeWarning() {
     const el = document.getElementById('file-warning');
     if (el) el.hidden = true;
-  }
-
-  // ---- DOCX extraction preview ----
-  function fetchDocxPreview(file) {
-    const wrap   = document.getElementById('docx-preview');
-    const body   = document.getElementById('docx-preview-body');
-    const stats  = document.getElementById('docx-preview-stats');
-    if (!wrap || !body) return;
-
-    wrap.hidden = false;
-    stats.textContent = '';
-    body.innerHTML =
-      '<span class="docx-preview-loading">' +
-        '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>' +
-        ' Extracting text&hellip;' +
-      '</span>';
-
-    const fd = new FormData();
-    fd.append('file', file);
-
-    fetch('/api/extract-docx-preview', { method: 'POST', body: fd })
-      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-      .then(function (out) {
-        const payload = out.body;
-        if (!payload || !payload.ok) {
-          body.innerHTML =
-            '<span class="docx-preview-failed">' +
-              escapeHtml(payload && payload.error
-                ? payload.error
-                : 'Could not extract text from this document.') +
-            '</span>';
-          stats.textContent = '';
-          return;
-        }
-        if (payload.empty) {
-          body.innerHTML =
-            '<span class="docx-preview-empty">' +
-              'No text was found in this document. Please check you uploaded the ' +
-              'correct file — an empty document will not be sent for marking.' +
-            '</span>';
-          stats.textContent = '';
-          return;
-        }
-        body.textContent = payload.preview;
-        stats.textContent =
-          (payload.word_count || 0).toLocaleString() + ' words, ' +
-          (payload.char_count || 0).toLocaleString() + ' characters' +
-          (payload.truncated ? ' (showing first 800 characters)' : '');
-      })
-      .catch(function () {
-        body.innerHTML =
-          '<span class="docx-preview-failed">' +
-            'Preview failed — the server could not be reached. You can still try ' +
-            'to submit; the marking service will extract the text server-side.' +
-          '</span>';
-      });
-  }
-
-  function hideDocxPreview() {
-    const wrap = document.getElementById('docx-preview');
-    if (wrap) wrap.hidden = true;
   }
 
   function showDropzoneError(message) {
@@ -927,7 +854,6 @@
   function iconForFile(file) {
     const ext = (file.name || '').split('.').pop().toLowerCase();
     if (ext === 'pdf') return 'fa-file-pdf';
-    if (ext === 'doc' || ext === 'docx') return 'fa-file-word';
     if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') return 'fa-file-image';
     return 'fa-file-lines';
   }
