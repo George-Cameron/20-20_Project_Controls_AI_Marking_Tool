@@ -1,16 +1,20 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
-# Uses a Docker build so that LibreOffice is available at runtime
-# for DOCX → PDF conversion. The Dockerfile installs libreoffice-writer
-# on top of node:20-slim.
+# Uses the standard Node runtime. LibreOffice is not available, so
+# DOCX submissions fall back to text-only extraction via mammoth and
+# the "Download Marked PDF" feature is disabled. For full-fidelity
+# DOCX handling, run the Dockerfile locally or on a host with more
+# resources.
 
 services:
   - type: web
     name: 2020-pm-ai-marking-companion
-    runtime: docker
+    runtime: node
     plan: free
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
-      # Must be set manually in the Render dashboard after first deploy.
-      # Never commit the real key to git.
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: NODE_VERSION
+        value: "20"

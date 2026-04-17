@@ -392,7 +392,8 @@ app.post('/api/generate-marked-pdf', (req, res) => {
       if (!feedbackPdf) {
         return res.status(500).json({
           ok: false,
-          error: 'Could not generate the feedback PDF. LibreOffice may not be available.'
+          error: 'PDF download is not available on this server because LibreOffice is not installed. ' +
+                 'Use "Copy Output" or "Print" instead.'
         });
       }
 
