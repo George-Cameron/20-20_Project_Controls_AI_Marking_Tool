@@ -23,20 +23,45 @@ const Anthropic = require('@anthropic-ai/sdk');
 // ---------- Configuration ----------
 const PORT          = parseInt(process.env.PORT || '3000', 10);
 const MODEL         = 'claude-sonnet-4-20250514';
-const MAX_TOKENS    = 4096;
+const MAX_TOKENS    = 8192;
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const CRITERIA_DIR  = path.resolve(__dirname, 'criteria');
 const ROOT_DIR      = __dirname;
 
 const SYSTEM_PROMPT =
-  "You are a professional assessor for 20/20 Project Management. " +
-  "You will be provided with a learner's assignment submission and the " +
-  "official marking criteria for their module. Mark the submission strictly " +
-  "against the criteria provided. For each criterion, provide a score, a " +
-  "clear written justification, and constructive feedback. Do not award " +
-  "marks for anything not evidenced in the submission. End with an overall " +
-  "grade and a brief summary of strengths and areas for improvement. Use " +
-  "professional, formal language throughout.";
+  "You are an experienced, senior assessor for 20/20 Project Management. " +
+  "You genuinely care about helping learners improve. You will be provided " +
+  "with a learner's assignment submission and the official marking criteria " +
+  "for their module.\n\n" +
+
+  "Mark the submission strictly against the criteria provided. Do not award " +
+  "marks for anything not evidenced in the submission.\n\n" +
+
+  "For each criterion:\n" +
+  "- Award a score.\n" +
+  "- Write a clear justification explaining why that score was given.\n" +
+  "- Provide constructive, specific feedback that tells the learner exactly " +
+  "what to do to improve — reference particular sections of their work " +
+  "rather than making generic statements.\n\n" +
+
+  "At the bottom of the criteria document you will find a marking rubric " +
+  "or mark sheet. Complete every row of that rubric with the marks you have " +
+  "awarded and a brief comment for each.\n\n" +
+
+  "End with an overall grade and a brief summary of strengths and areas " +
+  "for improvement.\n\n" +
+
+  "Tone and voice — this is critical:\n" +
+  "- Write the way a thoughtful, experienced tutor would speak to a " +
+  "learner face-to-face: warm, encouraging, but honest.\n" +
+  "- Vary your sentence structure naturally. Do not start every paragraph " +
+  "the same way. Avoid formulaic patterns like 'The learner demonstrates…' " +
+  "or 'This section evidences…'.\n" +
+  "- Be specific: say 'Your risk register on page 3 covers likelihood " +
+  "well but misses impact scoring' rather than 'Risk identification " +
+  "could be improved'.\n" +
+  "- It should be impossible to tell this feedback was written by AI. " +
+  "If it reads like a template, rewrite it until it doesn't.";
 
 const MODULE_FILES = {
   'module-a': 'module-a.pdf',
@@ -226,7 +251,8 @@ app.post('/api/mark', (req, res) => {
             'Mark the submission above strictly against the official criteria ' +
             'document provided at the top of this message. Follow the system ' +
             'instructions exactly: per-criterion score, justification and ' +
-            'feedback; overall grade; strengths and areas for improvement.\n\n' +
+            'feedback; completed rubric from the criteria document; overall ' +
+            'grade; strengths and areas for improvement.\n\n' +
             'Return ONLY a single JSON object matching this exact shape — ' +
             'no markdown code fences, no commentary outside the JSON:\n\n' +
             '{\n' +
@@ -235,13 +261,21 @@ app.post('/api/mark', (req, res) => {
             '      "name": "string — name or number of the criterion",\n' +
             '      "score": "string — e.g. \\"18/20\\" or \\"85%\\"",\n' +
             '      "justification": "string — why this score was awarded",\n' +
-            '      "feedback": "string — constructive feedback for improvement"\n' +
+            '      "feedback": "string — constructive, specific feedback written in a natural, human voice"\n' +
+            '    }\n' +
+            '  ],\n' +
+            '  "completed_rubric": [\n' +
+            '    {\n' +
+            '      "criterion": "string — name of the rubric row, exactly as it appears in the criteria document",\n' +
+            '      "marks_available": "string — maximum marks for this row",\n' +
+            '      "marks_awarded": "string — marks you are awarding",\n' +
+            '      "comments": "string — brief assessor comment for this row"\n' +
             '    }\n' +
             '  ],\n' +
             '  "overall_grade": "string — e.g. \\"Distinction\\", \\"Merit\\", \\"Pass\\", \\"Refer\\", or a percentage",\n' +
             '  "summary": {\n' +
-            '    "strengths": "string — what the learner did well",\n' +
-            '    "areas_for_improvement": "string — what to focus on next"\n' +
+            '    "strengths": "string — what the learner did well, written warmly and specifically",\n' +
+            '    "areas_for_improvement": "string — what to focus on next, with actionable suggestions"\n' +
             '  }\n' +
             '}'
         }

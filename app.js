@@ -606,7 +606,47 @@
           : '') +
       '</section>';
 
-    return cardsHtml + overallHtml;
+    const rubric = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
+    var rubricHtml = '';
+    if (rubric.length > 0) {
+      rubricHtml =
+        '<section class="rubric-section" aria-label="Completed marking rubric">' +
+          '<h4 class="rubric-heading">' +
+            '<i class="fa-solid fa-table-list" aria-hidden="true"></i> ' +
+            'Completed Marking Rubric' +
+          '</h4>' +
+          '<div class="rubric-table-wrap">' +
+            '<table class="rubric-table">' +
+              '<thead>' +
+                '<tr>' +
+                  '<th>Criterion</th>' +
+                  '<th>Available</th>' +
+                  '<th>Awarded</th>' +
+                  '<th>Comments</th>' +
+                '</tr>' +
+              '</thead>' +
+              '<tbody>' +
+                rubric.map(function (r) {
+                  var criterion = r && r.criterion ? String(r.criterion) : '—';
+                  var available = r && r.marks_available ? String(r.marks_available) : '—';
+                  var awarded   = r && r.marks_awarded   ? String(r.marks_awarded)   : '—';
+                  var comments  = r && r.comments        ? String(r.comments)        : '';
+                  return (
+                    '<tr>' +
+                      '<td class="rubric-criterion">' + escapeHtml(criterion) + '</td>' +
+                      '<td class="rubric-marks">' + escapeHtml(available) + '</td>' +
+                      '<td class="rubric-marks rubric-awarded">' + escapeHtml(awarded) + '</td>' +
+                      '<td>' + escapeHtml(comments) + '</td>' +
+                    '</tr>'
+                  );
+                }).join('') +
+              '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</section>';
+    }
+
+    return cardsHtml + rubricHtml + overallHtml;
   }
 
   function renderRawMarkSheet(text) {
@@ -701,6 +741,23 @@
       if (c && c.justification) lines.push('   Justification: ' + String(c.justification));
       if (c && c.feedback)      lines.push('   Feedback:      ' + String(c.feedback));
     });
+
+    const rubric = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
+    if (rubric.length > 0) {
+      lines.push('');
+      lines.push('MARKING RUBRIC');
+      lines.push('--------------');
+      rubric.forEach(function (r) {
+        var criterion = (r && r.criterion) ? String(r.criterion) : '—';
+        var available = (r && r.marks_available) ? String(r.marks_available) : '—';
+        var awarded   = (r && r.marks_awarded)   ? String(r.marks_awarded)   : '—';
+        var comments  = (r && r.comments)        ? String(r.comments)        : '';
+        lines.push('');
+        lines.push(criterion);
+        lines.push('  Marks: ' + awarded + ' / ' + available);
+        if (comments) lines.push('  Comment: ' + comments);
+      });
+    }
 
     lines.push('');
     lines.push('OVERALL GRADE: ' + (sheet.overall_grade ? String(sheet.overall_grade) : '—'));
