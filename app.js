@@ -13,12 +13,9 @@
   'use strict';
 
   // -------- Configuration --------
-  const ACCEPTED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+  const ACCEPTED_EXTENSIONS = ['pdf'];
   const ACCEPTED_MIME_TYPES = [
-    'application/pdf',
-    'image/jpeg',
-    'image/jpg',
-    'image/png'
+    'application/pdf'
   ];
   const MAX_FILE_BYTES  = 20 * 1024 * 1024;  // hard cap — reject above this
   const WARN_FILE_BYTES =  5 * 1024 * 1024;  // soft threshold — warn above this
@@ -166,7 +163,7 @@
 
     // Some browsers leave MIME blank — accept if the extension is valid.
     if (!extOk && !mimeOk) {
-      return 'Unsupported file type. Please upload a PDF, JPG, or PNG file.';
+      return 'Unsupported file type. Please upload a PDF file.';
     }
     if (file.size > MAX_FILE_BYTES) {
       return 'File is too large. The maximum size is 20MB.';
@@ -851,11 +848,8 @@
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
-  function iconForFile(file) {
-    const ext = (file.name || '').split('.').pop().toLowerCase();
-    if (ext === 'pdf') return 'fa-file-pdf';
-    if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') return 'fa-file-image';
-    return 'fa-file-lines';
+  function iconForFile() {
+    return 'fa-file-pdf';
   }
 
   function fileTypeFromName(name) {

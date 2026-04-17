@@ -445,6 +445,9 @@ p {
   box-shadow: var(--shadow-card);
   border-left: 3px solid var(--color-primary-red);
 }
+.file-preview[hidden] {
+  display: none;
+}
 
 .file-preview-icon {
   font-size: 1.6rem;
@@ -499,6 +502,9 @@ p {
   color: #7a5a10;
   font-size: 0.92rem;
   line-height: 1.5;
+}
+.file-warning[hidden] {
+  display: none;
 }
 .file-warning i {
   color: #d99a2b;

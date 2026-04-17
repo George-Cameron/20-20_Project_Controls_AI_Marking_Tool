@@ -76,10 +76,7 @@ const MODULE_FILES = {
 
 // Accepted submission types (extension + MIME)
 const ACCEPTED = {
-  pdf:  { mime: 'application/pdf' },
-  jpg:  { mime: 'image/jpeg' },
-  jpeg: { mime: 'image/jpeg' },
-  png:  { mime: 'image/png' }
+  pdf: { mime: 'application/pdf' }
 };
 
 // ---------- API key ----------
@@ -143,7 +140,7 @@ app.post('/api/mark', (req, res) => {
       if (!ACCEPTED[ext]) {
         return res.status(400).json({
           ok: false,
-          error: 'Unsupported file type. Accepted: PDF, JPG, PNG.'
+          error: 'Unsupported file type. Only PDF files are accepted.'
         });
       }
 
@@ -296,21 +293,11 @@ app.post('/api/generate-marked-pdf', (req, res) => {
 
       const ext = (file.originalname.split('.').pop() || '').toLowerCase();
 
-      // 1. Get the original submission as a PDF buffer.
-      var originalPdf;
-      if (ext === 'pdf') {
-        originalPdf = file.buffer;
-      } else if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') {
-        originalPdf = convertImageToPdf(file.buffer, file.originalname, ext);
-        if (!originalPdf) {
-          return res.status(500).json({
-            ok: false,
-            error: 'Could not convert the image to PDF.'
-          });
-        }
-      } else {
-        return res.status(400).json({ ok: false, error: 'Unsupported file type.' });
+      // 1. The submission must be a PDF.
+      if (ext !== 'pdf') {
+        return res.status(400).json({ ok: false, error: 'Only PDF files are accepted.' });
       }
+      var originalPdf = file.buffer;
 
       // 2. Generate the feedback document as HTML, then convert to PDF.
       const feedbackHtml = buildFeedbackHtml(markSheet, file.originalname, req.body.module || '');
@@ -370,18 +357,6 @@ async function buildSubmissionBlocks(file, ext) {
     }];
   }
 
-  if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') {
-    return [{
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: ext === 'png' ? 'image/png' : 'image/jpeg',
-        data: file.buffer.toString('base64')
-      }
-    }];
-  }
-
-  // Should be unreachable thanks to upstream validation.
   throw new Error('Unsupported file extension: ' + ext);
 }
 
@@ -414,19 +389,6 @@ function parseMarkSheet(text) {
  * Wrap a raw image buffer in a minimal HTML page so LibreOffice can
  * convert it to a single-page PDF.
  */
-function convertImageToPdf(buffer, originalName, ext) {
-  var mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  var b64  = buffer.toString('base64');
-  var html =
-    '<!DOCTYPE html><html><head><style>' +
-    'body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;}' +
-    'img{max-width:100%;max-height:100vh;}' +
-    '</style></head><body>' +
-    '<img src="data:' + mime + ';base64,' + b64 + '"/>' +
-    '</body></html>';
-  return convertHtmlToPdf(html, originalName + '.html');
-}
-
 /**
  * Convert an HTML string to PDF via LibreOffice headless.
  * Returns a Buffer, or null if LibreOffice is unavailable.
