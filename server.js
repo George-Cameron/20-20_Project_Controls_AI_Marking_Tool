@@ -13,6 +13,8 @@ require('dotenv').config();
 
 const path    = require('path');
 const fs      = require('fs');
+const os      = require('os');
+const { execFileSync } = require('child_process');
 const express = require('express');
 const multer  = require('multer');
 const mammoth = require('mammoth');
@@ -297,11 +299,12 @@ app.post('/api/mark', (req, res) => {
  * Convert an uploaded submission file into an array of Anthropic content
  * blocks based on its extension.
  *
- *   PDF  → document (base64)
- *   PNG  → image    (base64)
- *   JPG  → image    (base64)
- *   DOC  → text     (extracted via mammoth)
- *   DOCX → text     (extracted via mammoth)
+ *   PDF        → document (base64)
+ *   PNG / JPG  → image    (base64)
+ *   DOC / DOCX → converted to PDF via LibreOffice, then sent as a
+ *                 document block so Claude reads text AND embedded images.
+ *                 Falls back to mammoth text-only extraction if
+ *                 LibreOffice is not installed (local dev convenience).
  */
 async function buildSubmissionBlocks(file, ext) {
   if (ext === 'pdf') {
@@ -328,8 +331,29 @@ async function buildSubmissionBlocks(file, ext) {
   }
 
   if (ext === 'doc' || ext === 'docx') {
-    // mammoth handles .docx natively. .doc support is best-effort —
-    // most learners submit .docx, and we fail clearly if extraction fails.
+    // Try LibreOffice conversion first (preserves images + formatting).
+    // Fall back to mammoth text-only extraction if LO isn't available,
+    // so local dev without LibreOffice still works.
+    const pdfBuffer = convertDocxToPdf(file.buffer, file.originalname);
+
+    if (pdfBuffer) {
+      return [{
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: pdfBuffer.toString('base64')
+        },
+        title: file.originalname + ' (converted to PDF)'
+      }];
+    }
+
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[buildSubmissionBlocks] LibreOffice not available — ' +
+      'falling back to mammoth text extraction for ' + file.originalname
+    );
+
     let text;
     try {
       const result = await mammoth.extractRawText({ buffer: file.buffer });
@@ -344,12 +368,62 @@ async function buildSubmissionBlocks(file, ext) {
     }
     return [{
       type: 'text',
-      text: 'Learner submission (extracted text):\n\n' + text
+      text: 'Learner submission (extracted text — images in the original document ' +
+            'could not be included because LibreOffice is not installed on this ' +
+            'server):\n\n' + text
     }];
   }
 
   // Should be unreachable thanks to upstream validation.
   throw new Error('Unsupported file extension: ' + ext);
+}
+
+/**
+ * Convert a DOCX/DOC buffer to PDF using LibreOffice in headless mode.
+ * Returns a Buffer containing the PDF, or null if LibreOffice is not
+ * installed or the conversion fails.
+ *
+ * The function is synchronous (execFileSync) because the conversion is
+ * fast for typical assignment-sized documents (<10s) and keeps the
+ * calling code simple. A temp directory is used and cleaned up
+ * regardless of outcome.
+ */
+function convertDocxToPdf(buffer, originalName) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-convert-'));
+  const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const inputPath = path.join(tmpDir, safeName);
+
+  try {
+    fs.writeFileSync(inputPath, buffer);
+
+    execFileSync('libreoffice', [
+      '--headless',
+      '--convert-to', 'pdf',
+      '--outdir', tmpDir,
+      inputPath
+    ], {
+      timeout: 30000,   // 30s safety cap
+      stdio: 'pipe'     // don't leak LO output to stdout
+    });
+
+    // LibreOffice writes <name>.pdf alongside the input file.
+    const pdfName = safeName.replace(/\.[^.]+$/, '.pdf');
+    const pdfPath = path.join(tmpDir, pdfName);
+
+    if (!fs.existsSync(pdfPath)) {
+      return null;
+    }
+
+    return fs.readFileSync(pdfPath);
+  } catch (err) {
+    // LibreOffice not installed, or conversion failed.
+    // eslint-disable-next-line no-console
+    console.warn('[convertDocxToPdf]', err.message || err);
+    return null;
+  } finally {
+    // Clean up the temp directory.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+  }
 }
 
 function escapeForPrompt(s) {
