@@ -13,11 +13,10 @@ require('dotenv').config();
 
 const path    = require('path');
 const fs      = require('fs');
-const os      = require('os');
-const { execFileSync } = require('child_process');
 const express    = require('express');
 const multer     = require('multer');
 const { PDFDocument } = require('pdf-lib');
+const PDFKit     = require('pdfkit');
 const Anthropic  = require('@anthropic-ai/sdk');
 
 // ---------- Configuration ----------
@@ -299,16 +298,8 @@ app.post('/api/generate-marked-pdf', (req, res) => {
       }
       var originalPdf = file.buffer;
 
-      // 2. Generate the feedback document as HTML, then convert to PDF.
-      const feedbackHtml = buildFeedbackHtml(markSheet, file.originalname, req.body.module || '');
-      const feedbackPdf  = convertHtmlToPdf(feedbackHtml, 'feedback.html');
-      if (!feedbackPdf) {
-        return res.status(500).json({
-          ok: false,
-          error: 'PDF download is not available on this server because LibreOffice is not installed. ' +
-                 'Use "Copy Output" or "Print" instead.'
-        });
-      }
+      // 2. Generate the feedback document as a PDF using pdfkit.
+      const feedbackPdf = buildFeedbackPdf(markSheet, file.originalname, req.body.module || '');
 
       // 3. Merge: original submission + feedback pages.
       const mergedPdf = await mergePdfs([originalPdf, feedbackPdf]);
@@ -386,44 +377,6 @@ function parseMarkSheet(text) {
 }
 
 /**
- * Wrap a raw image buffer in a minimal HTML page so LibreOffice can
- * convert it to a single-page PDF.
- */
-/**
- * Convert an HTML string to PDF via LibreOffice headless.
- * Returns a Buffer, or null if LibreOffice is unavailable.
- */
-function convertHtmlToPdf(html, tempName) {
-  var tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'html2pdf-'));
-  var safeName = (tempName || 'doc.html').replace(/[^a-zA-Z0-9._-]/g, '_');
-  if (!safeName.endsWith('.html')) safeName += '.html';
-  var inputPath = path.join(tmpDir, safeName);
-
-  try {
-    fs.writeFileSync(inputPath, html, 'utf8');
-
-    execFileSync('libreoffice', [
-      '--headless',
-      '--convert-to', 'pdf',
-      '--outdir', tmpDir,
-      inputPath
-    ], { timeout: 30000, stdio: 'pipe' });
-
-    var pdfName = safeName.replace(/\.html$/, '.pdf');
-    var pdfPath = path.join(tmpDir, pdfName);
-
-    if (!fs.existsSync(pdfPath)) return null;
-    return fs.readFileSync(pdfPath);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[convertHtmlToPdf]', err.message || err);
-    return null;
-  } finally {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* ignore */ }
-  }
-}
-
-/**
  * Merge an array of PDF buffers into a single PDF using pdf-lib.
  */
 async function mergePdfs(pdfBuffers) {
@@ -437,12 +390,10 @@ async function mergePdfs(pdfBuffers) {
 }
 
 /**
- * Build a complete HTML document containing the styled feedback,
- * completed rubric table, overall grade, and summary. Designed to
- * be converted to PDF by LibreOffice and appended after the original
- * submission.
+ * Build a feedback PDF using pdfkit (pure JS — no system dependencies).
+ * Returns a Buffer containing the PDF.
  */
-function buildFeedbackHtml(sheet, fileName, moduleKey) {
+function buildFeedbackPdf(sheet, fileName, moduleKey) {
   var criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
   var rubric   = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
   var summary  = sheet.summary || {};
@@ -450,99 +401,226 @@ function buildFeedbackHtml(sheet, fileName, moduleKey) {
     ? moduleKey.replace('-', ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); })
     : (moduleKey || '');
 
-  var esc = function (s) {
-    return String(s || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  };
+  // Colour palette
+  var RED   = '#E8303A';
+  var NAVY  = '#1D253C';
+  var BODY  = '#2a2a2a';
+  var MUTED = '#AAAAAA';
+  var GREY_BG = '#f2f2f2';
 
-  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/>' +
-    '<style>' +
-    '@page { margin: 25mm 20mm; }' +
-    'body { font-family: Arial, Helvetica, sans-serif; color: #2a2a2a; font-size: 11pt; line-height: 1.55; }' +
-    'h1 { color: #1D253C; font-size: 16pt; border-bottom: 3px solid #E8303A; padding-bottom: 8px; margin-bottom: 4px; }' +
-    '.meta { color: #AAAAAA; font-size: 9pt; margin-bottom: 24px; }' +
-    'h2 { color: #1D253C; font-size: 13pt; margin-top: 28px; margin-bottom: 10px; }' +
-    'h3 { color: #1D253C; font-size: 11pt; margin: 0 0 4px 0; }' +
-    '.criterion { margin-bottom: 18px; border-left: 3px solid #E8303A; padding-left: 14px; }' +
-    '.score { display: inline-block; background: #E8303A; color: #fff; padding: 2px 10px; font-weight: bold; font-size: 10pt; margin-bottom: 6px; }' +
-    '.label { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; color: #AAAAAA; margin-top: 8px; margin-bottom: 2px; }' +
-    'table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 10pt; }' +
-    'th { background: #1D253C; color: #fff; padding: 7px 10px; text-align: left; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.06em; }' +
-    'td { padding: 7px 10px; border: 1px solid #d3d6de; vertical-align: top; }' +
-    'tr:nth-child(even) { background: #f2f2f2; }' +
-    '.awarded { color: #E8303A; font-weight: bold; text-align: center; }' +
-    '.available { text-align: center; }' +
-    '.overall { background: #f2f2f2; border-left: 4px solid #E8303A; padding: 16px 18px; margin-top: 28px; }' +
-    '.grade { color: #E8303A; font-size: 18pt; font-weight: bold; margin: 4px 0 12px 0; }' +
-    '.section-head { font-weight: bold; color: #1D253C; margin: 12px 0 4px 0; }' +
-    '</style></head><body>';
+  var doc = new PDFKit({ size: 'A4', margin: 60 });
+  var chunks = [];
+  doc.on('data', function (c) { chunks.push(c); });
 
-  // Header
-  html += '<h1>Assessment Feedback &mdash; 20/20 Project Management</h1>';
-  html += '<p class="meta">' + esc(fileName) + ' &middot; ' + esc(moduleLabel) + '</p>';
+  var pageW  = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-  // Detailed criteria
+  // Helper: add space and page-break if near bottom
+  function ensureSpace(needed) {
+    if (doc.y + needed > doc.page.height - doc.page.margins.bottom - 20) {
+      doc.addPage();
+    }
+  }
+
+  // ---- Header ----
+  doc.fontSize(18).fillColor(NAVY).font('Helvetica-Bold')
+     .text('Assessment Feedback', { continued: false });
+  doc.fontSize(10).fillColor(MUTED).font('Helvetica')
+     .text('20/20 Project Management', { continued: false });
+  doc.moveDown(0.3);
+  // Red underline
+  doc.moveTo(doc.page.margins.left, doc.y)
+     .lineTo(doc.page.margins.left + pageW, doc.y)
+     .lineWidth(2).strokeColor(RED).stroke();
+  doc.moveDown(0.6);
+
+  // Meta line
+  doc.fontSize(9).fillColor(MUTED).font('Helvetica')
+     .text(fileName + '  ·  ' + moduleLabel);
+  doc.moveDown(1.2);
+
+  // ---- Criteria ----
   if (criteria.length > 0) {
-    html += '<h2>Detailed Feedback</h2>';
+    doc.fontSize(14).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Detailed Feedback');
+    doc.moveDown(0.6);
+
     criteria.forEach(function (c, i) {
       var name          = (c && c.name)          ? String(c.name)          : ('Criterion ' + (i + 1));
       var score         = (c && c.score)         ? String(c.score)         : '';
       var justification = (c && c.justification) ? String(c.justification) : '';
       var feedback      = (c && c.feedback)      ? String(c.feedback)      : '';
 
-      html += '<div class="criterion">';
-      html += '<h3>' + esc(name) + '</h3>';
-      if (score) html += '<span class="score">' + esc(score) + '</span>';
+      ensureSpace(80);
+
+      // Red left bar
+      var barTop = doc.y;
+      var savedX = doc.x;
+      doc.rect(doc.page.margins.left, barTop, 3, 0).fill(RED); // placeholder height
+
+      doc.x = doc.page.margins.left + 12;
+      var contentW = pageW - 12;
+
+      // Name + score
+      doc.fontSize(11).fillColor(NAVY).font('Helvetica-Bold')
+         .text(name, doc.x, doc.y, { width: contentW, continued: false });
+      if (score) {
+        doc.fontSize(10).fillColor(RED).font('Helvetica-Bold')
+           .text(score, { width: contentW });
+      }
+      doc.moveDown(0.3);
+
+      // Justification
       if (justification) {
-        html += '<p class="label">Justification</p>';
-        html += '<p>' + esc(justification) + '</p>';
+        doc.fontSize(7).fillColor(MUTED).font('Helvetica-Bold')
+           .text('JUSTIFICATION', { width: contentW });
+        doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+           .text(justification, { width: contentW });
+        doc.moveDown(0.3);
       }
+
+      // Feedback
       if (feedback) {
-        html += '<p class="label">Feedback</p>';
-        html += '<p>' + esc(feedback) + '</p>';
+        doc.fontSize(7).fillColor(MUTED).font('Helvetica-Bold')
+           .text('FEEDBACK', { width: contentW });
+        doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+           .text(feedback, { width: contentW });
       }
-      html += '</div>';
+
+      // Draw the red left bar to actual height
+      var barH = doc.y - barTop;
+      doc.rect(doc.page.margins.left, barTop, 3, barH).fill(RED);
+      doc.x = savedX;
+      doc.moveDown(1);
     });
   }
 
-  // Completed rubric
+  // ---- Rubric table ----
   if (rubric.length > 0) {
-    html += '<h2>Completed Marking Rubric</h2>';
-    html += '<table><thead><tr>' +
-      '<th>Criterion</th><th>Available</th><th>Awarded</th><th>Comments</th>' +
-      '</tr></thead><tbody>';
-    rubric.forEach(function (r) {
-      var criterion = (r && r.criterion)       ? String(r.criterion)       : '';
-      var available = (r && r.marks_available) ? String(r.marks_available) : '';
-      var awarded   = (r && r.marks_awarded)   ? String(r.marks_awarded)   : '';
-      var comments  = (r && r.comments)        ? String(r.comments)        : '';
-      html += '<tr>' +
-        '<td><strong>' + esc(criterion) + '</strong></td>' +
-        '<td class="available">' + esc(available) + '</td>' +
-        '<td class="awarded">' + esc(awarded) + '</td>' +
-        '<td>' + esc(comments) + '</td>' +
-        '</tr>';
+    ensureSpace(60);
+    doc.fontSize(14).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Completed Marking Rubric');
+    doc.moveDown(0.5);
+
+    var cols = [
+      { label: 'Criterion',  w: pageW * 0.35 },
+      { label: 'Available',  w: pageW * 0.12 },
+      { label: 'Awarded',    w: pageW * 0.12 },
+      { label: 'Comments',   w: pageW * 0.41 }
+    ];
+    var rowH = 22;
+    var cellPad = 6;
+
+    // Header row
+    ensureSpace(rowH + 10);
+    var hx = doc.page.margins.left;
+    var hy = doc.y;
+    cols.forEach(function (col) {
+      doc.rect(hx, hy, col.w, rowH).fill(NAVY);
+      doc.fontSize(7.5).fillColor('#ffffff').font('Helvetica-Bold')
+         .text(col.label.toUpperCase(), hx + cellPad, hy + 6, { width: col.w - cellPad * 2 });
+      hx += col.w;
     });
-    html += '</tbody></table>';
+    doc.y = hy + rowH;
+
+    // Data rows
+    rubric.forEach(function (r, ri) {
+      var vals = [
+        (r && r.criterion)       ? String(r.criterion)       : '',
+        (r && r.marks_available) ? String(r.marks_available) : '',
+        (r && r.marks_awarded)   ? String(r.marks_awarded)   : '',
+        (r && r.comments)        ? String(r.comments)        : ''
+      ];
+
+      // Measure height needed for the comments column (longest content)
+      var commentH = doc.fontSize(8.5).font('Helvetica')
+        .heightOfString(vals[3] || ' ', { width: cols[3].w - cellPad * 2 });
+      var dynH = Math.max(rowH, commentH + 14);
+
+      ensureSpace(dynH + 4);
+      var rx = doc.page.margins.left;
+      var ry = doc.y;
+      var bg = (ri % 2 === 1) ? GREY_BG : '#ffffff';
+
+      vals.forEach(function (val, ci) {
+        doc.rect(rx, ry, cols[ci].w, dynH).fillAndStroke(bg, '#d3d6de');
+        var fontColor = (ci === 2) ? RED : BODY;
+        var fontName  = (ci === 0 || ci === 2) ? 'Helvetica-Bold' : 'Helvetica';
+        doc.fontSize(8.5).fillColor(fontColor).font(fontName)
+           .text(val, rx + cellPad, ry + 6, { width: cols[ci].w - cellPad * 2 });
+        rx += cols[ci].w;
+      });
+      doc.y = ry + dynH;
+    });
+    doc.moveDown(1);
   }
 
-  // Overall grade + summary
-  html += '<div class="overall">';
-  html += '<p class="label">Overall Grade</p>';
-  html += '<p class="grade">' + esc(sheet.overall_grade || '—') + '</p>';
+  // ---- Overall grade ----
+  ensureSpace(80);
+  var boxTop = doc.y;
+  // We'll draw the background after measuring content height
+  var savedY = doc.y;
+
+  doc.x = doc.page.margins.left + 18;
+  var boxW = pageW - 18;
+
+  doc.moveDown(0.3);
+  doc.fontSize(7).fillColor(MUTED).font('Helvetica-Bold')
+     .text('OVERALL GRADE', doc.x, doc.y, { width: boxW });
+  doc.fontSize(20).fillColor(RED).font('Helvetica-Bold')
+     .text(String(sheet.overall_grade || '—'), { width: boxW });
+  doc.moveDown(0.4);
+
   if (summary.strengths) {
-    html += '<p class="section-head">Strengths</p>';
-    html += '<p>' + esc(String(summary.strengths)) + '</p>';
+    doc.fontSize(10).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Strengths', { width: boxW });
+    doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+       .text(String(summary.strengths), { width: boxW });
+    doc.moveDown(0.4);
   }
   if (summary.areas_for_improvement) {
-    html += '<p class="section-head">Areas for Improvement</p>';
-    html += '<p>' + esc(String(summary.areas_for_improvement)) + '</p>';
+    doc.fontSize(10).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Areas for Improvement', { width: boxW });
+    doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+       .text(String(summary.areas_for_improvement), { width: boxW });
   }
-  html += '</div>';
+  doc.moveDown(0.5);
 
-  html += '</body></html>';
-  return html;
+  var boxH = doc.y - boxTop;
+  // Draw grey background + red left bar behind the content we just laid out.
+  // pdfkit draws in order, so we save/restore to paint beneath.
+  doc.save();
+  doc.rect(doc.page.margins.left, boxTop, pageW, boxH).fill(GREY_BG);
+  doc.rect(doc.page.margins.left, boxTop, 4, boxH).fill(RED);
+  doc.restore();
+  // Re-render the text on top of the background
+  doc.y = savedY;
+  doc.x = doc.page.margins.left + 18;
+  doc.moveDown(0.3);
+  doc.fontSize(7).fillColor(MUTED).font('Helvetica-Bold')
+     .text('OVERALL GRADE', doc.x, doc.y, { width: boxW });
+  doc.fontSize(20).fillColor(RED).font('Helvetica-Bold')
+     .text(String(sheet.overall_grade || '—'), { width: boxW });
+  doc.moveDown(0.4);
+  if (summary.strengths) {
+    doc.fontSize(10).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Strengths', { width: boxW });
+    doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+       .text(String(summary.strengths), { width: boxW });
+    doc.moveDown(0.4);
+  }
+  if (summary.areas_for_improvement) {
+    doc.fontSize(10).fillColor(NAVY).font('Helvetica-Bold')
+       .text('Areas for Improvement', { width: boxW });
+    doc.fontSize(9.5).fillColor(BODY).font('Helvetica')
+       .text(String(summary.areas_for_improvement), { width: boxW });
+  }
+
+  doc.end();
+
+  // Collect the buffer synchronously via the chunks array.
+  // pdfkit is synchronous when not piped to a stream — doc.end()
+  // flushes all remaining data to the 'data' listener above.
+  return Buffer.concat(chunks);
 }
 
 // ---------- Boot ----------
