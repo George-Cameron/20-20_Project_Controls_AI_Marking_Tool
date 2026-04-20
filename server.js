@@ -299,7 +299,7 @@ app.post('/api/generate-marked-pdf', (req, res) => {
       var originalPdf = file.buffer;
 
       // 2. Generate the feedback document as a PDF using pdfkit.
-      const feedbackPdf = buildFeedbackPdf(markSheet, file.originalname, req.body.module || '');
+      const feedbackPdf = await buildFeedbackPdf(markSheet, file.originalname, req.body.module || '');
 
       // 3. Merge: original submission + feedback pages.
       const mergedPdf = await mergePdfs([originalPdf, feedbackPdf]);
@@ -394,6 +394,7 @@ async function mergePdfs(pdfBuffers) {
  * Returns a Buffer containing the PDF.
  */
 function buildFeedbackPdf(sheet, fileName, moduleKey) {
+  return new Promise(function (resolve, reject) {
   var criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
   var rubric   = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
   var summary  = sheet.summary || {};
@@ -411,6 +412,8 @@ function buildFeedbackPdf(sheet, fileName, moduleKey) {
   var doc = new PDFKit({ size: 'A4', margin: 60 });
   var chunks = [];
   doc.on('data', function (c) { chunks.push(c); });
+  doc.on('end', function () { resolve(Buffer.concat(chunks)); });
+  doc.on('error', function (err) { reject(err); });
 
   var pageW  = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
@@ -616,11 +619,7 @@ function buildFeedbackPdf(sheet, fileName, moduleKey) {
   }
 
   doc.end();
-
-  // Collect the buffer synchronously via the chunks array.
-  // pdfkit is synchronous when not piped to a stream — doc.end()
-  // flushes all remaining data to the 'data' listener above.
-  return Buffer.concat(chunks);
+  }); // end Promise
 }
 
 // ---------- Boot ----------
