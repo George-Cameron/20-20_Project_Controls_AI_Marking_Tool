@@ -27,8 +27,7 @@
     'module-d': 'Module D — Risk Management',
     'module-e': 'Module E — Earned Value Management',
     'module-f': 'Module F — Change & Configuration Control',
-    'module-g': 'Module G — Reporting & Analysis',
-    'module-h': 'Module H — Integrated Project Controls'
+    'module-g': 'Module G — Reporting & Analysis'
   };
 
   // -------- Shared state --------

@@ -33,8 +33,7 @@ const MODULES = [
   { key: 'module-d', name: 'Risk Management',                   file: 'module-d.pdf' },
   { key: 'module-e', name: 'Earned Value Management',           file: 'module-e.pdf' },
   { key: 'module-f', name: 'Change & Configuration Control',    file: 'module-f.pdf' },
-  { key: 'module-g', name: 'Reporting & Analysis',              file: 'module-g.pdf' },
-  { key: 'module-h', name: 'Integrated Project Controls',       file: 'module-h.pdf' }
+  { key: 'module-g', name: 'Reporting & Analysis',              file: 'module-g.pdf' }
 ];
 
 // A short sample paragraph submitted for every module. Deliberately

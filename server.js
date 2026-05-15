@@ -69,8 +69,7 @@ const MODULE_FILES = {
   'module-d': 'module-d.pdf',
   'module-e': 'module-e.pdf',
   'module-f': 'module-f.pdf',
-  'module-g': 'module-g.pdf',
-  'module-h': 'module-h.pdf'
+  'module-g': 'module-g.pdf'
 };
 
 // Accepted submission types (extension + MIME)
