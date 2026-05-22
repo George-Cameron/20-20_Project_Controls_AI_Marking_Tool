@@ -21,7 +21,7 @@ const Anthropic  = require('@anthropic-ai/sdk');
 
 // ---------- Configuration ----------
 const PORT          = parseInt(process.env.PORT || '3000', 10);
-const MODEL         = 'claude-sonnet-4-20250514';
+const MODEL         = 'claude-sonnet-4-6';
 const MAX_TOKENS    = 8192;
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const CRITERIA_DIR  = path.resolve(__dirname, 'criteria');
