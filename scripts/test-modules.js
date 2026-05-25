@@ -27,13 +27,13 @@ const CRITERIA_DIR = path.resolve(__dirname, '..', 'criteria');
 
 // Kept in sync with MODULE_FILES in server.js.
 const MODULES = [
-  { key: 'module-a', name: 'Introduction to Project Controls',  file: 'module-a.pdf' },
-  { key: 'module-b', name: 'Planning & Scheduling',             file: 'module-b.pdf' },
-  { key: 'module-c', name: 'Cost Management',                   file: 'module-c.pdf' },
-  { key: 'module-d', name: 'Risk Management',                   file: 'module-d.pdf' },
-  { key: 'module-e', name: 'Earned Value Management',           file: 'module-e.pdf' },
-  { key: 'module-f', name: 'Change & Configuration Control',    file: 'module-f.pdf' },
-  { key: 'module-g', name: 'Reporting & Analysis',              file: 'module-g.pdf' }
+  { key: 'module-a', name: 'Nature of projects',                                          file: 'module-a.pdf' },
+  { key: 'module-b', name: 'Project Initiation, risk & change',                           file: 'module-b.pdf' },
+  { key: 'module-c', name: 'Estimating & scope definition',                               file: 'module-c.pdf' },
+  { key: 'module-d', name: 'Procurement & document control',                              file: 'module-d.pdf' },
+  { key: 'module-e', name: 'Planning & scheduling',                                       file: 'module-e.pdf' },
+  { key: 'module-f', name: 'Cost management, project control (time/cost) & monitoring',  file: 'module-f.pdf' },
+  { key: 'module-g', name: 'Project control & jobsite management',                        file: 'module-g.pdf' }
 ];
 
 // A short sample paragraph submitted for every module. Deliberately

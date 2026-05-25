@@ -21,13 +21,13 @@
   const WARN_FILE_BYTES =  5 * 1024 * 1024;  // soft threshold — warn above this
 
   const MODULE_LABELS = {
-    'module-a': 'Module A — Introduction to Project Controls',
-    'module-b': 'Module B — Planning & Scheduling',
-    'module-c': 'Module C — Cost Management',
-    'module-d': 'Module D — Risk Management',
-    'module-e': 'Module E — Earned Value Management',
-    'module-f': 'Module F — Change & Configuration Control',
-    'module-g': 'Module G — Reporting & Analysis'
+    'module-a': 'Module A — Nature of projects',
+    'module-b': 'Module B — Project Initiation, risk & change',
+    'module-c': 'Module C — Estimating & scope definition',
+    'module-d': 'Module D — Procurement & document control',
+    'module-e': 'Module E — Planning & scheduling',
+    'module-f': 'Module F — Cost management, project control (time/cost) & monitoring',
+    'module-g': 'Module G — Project control & jobsite management'
   };
 
   // -------- Shared state --------
