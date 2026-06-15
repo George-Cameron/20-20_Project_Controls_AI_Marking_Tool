@@ -13,6 +13,7 @@ require('dotenv').config();
 
 const path    = require('path');
 const fs      = require('fs');
+const crypto  = require('crypto');
 const express    = require('express');
 const multer     = require('multer');
 const { PDFDocument } = require('pdf-lib');
@@ -77,6 +78,33 @@ const ACCEPTED = {
   pdf: { mime: 'application/pdf' }
 };
 
+// In-memory cache: same submission (byte-identical PDF) + same module
+// returns the previously-generated mark sheet instead of re-calling the
+// API. FIFO eviction at MARK_CACHE_MAX_ENTRIES. Cache is lost on restart.
+const MARK_CACHE_MAX_ENTRIES = 500;
+const MARK_CACHE = new Map();
+
+function markCacheKey(fileBuffer, moduleKey) {
+  return crypto
+    .createHash('sha256')
+    .update(moduleKey)
+    .update('\0')
+    .update(fileBuffer)
+    .digest('hex');
+}
+
+function markCacheGet(key) {
+  return MARK_CACHE.get(key) || null;
+}
+
+function markCacheSet(key, value) {
+  if (MARK_CACHE.size >= MARK_CACHE_MAX_ENTRIES) {
+    const oldestKey = MARK_CACHE.keys().next().value;
+    if (oldestKey !== undefined) MARK_CACHE.delete(oldestKey);
+  }
+  MARK_CACHE.set(key, value);
+}
+
 // ---------- API key ----------
 // Warn at boot if missing, but don't crash — the frontend should still
 // load so the user can see the tool. The key is checked at request time
@@ -140,6 +168,14 @@ app.post('/api/mark', (req, res) => {
           ok: false,
           error: 'Unsupported file type. Only PDF files are accepted.'
         });
+      }
+
+      // ----- Cache check -----
+      // Identical submission + same module returns the previous result.
+      const cacheKey = markCacheKey(file.buffer, moduleKey);
+      const cached = markCacheGet(cacheKey);
+      if (cached) {
+        return res.json(cached);
       }
 
       // ----- Load criteria PDF -----
@@ -239,14 +275,16 @@ app.post('/api/mark', (req, res) => {
       // The client falls back to rendering raw_text if this is null.
       const structured = parseMarkSheet(textOut);
 
-      return res.json({
+      const payload = {
         ok: true,
         model: response.model,
         stop_reason: response.stop_reason,
         usage: response.usage,
         mark_sheet: structured,
         raw_text: textOut
-      });
+      };
+      markCacheSet(cacheKey, payload);
+      return res.json(payload);
 
     } catch (err) {
       // eslint-disable-next-line no-console
