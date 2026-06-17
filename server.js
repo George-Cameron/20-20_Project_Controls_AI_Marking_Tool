@@ -28,6 +28,83 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const CRITERIA_DIR  = path.resolve(__dirname, 'criteria');
 const ROOT_DIR      = __dirname;
 
+// ---------- Authentication ----------
+// Simple shared-credential gate: any email on an allowed 20/20 domain plus
+// the shared password. Enforced server-side so the (paid) API endpoints
+// cannot be called without signing in. Configurable via environment.
+const ALLOWED_EMAIL_DOMAINS = String(process.env.ALLOWED_EMAIL_DOMAINS || '2020pm.uk')
+  .split(',')
+  .map(function (d) { return d.trim().toLowerCase(); })
+  .filter(Boolean);
+const APP_PASSWORD   = process.env.APP_PASSWORD || 'Project123*';
+const SESSION_SECRET = process.env.SESSION_SECRET || ('2020pm-session-' + APP_PASSWORD);
+const SESSION_COOKIE = 'pm_session';
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function emailDomainAllowed(email) {
+  var at = String(email || '').toLowerCase().trim();
+  var idx = at.lastIndexOf('@');
+  if (idx === -1) return false;
+  var domain = at.slice(idx + 1);
+  return ALLOWED_EMAIL_DOMAINS.indexOf(domain) !== -1;
+}
+
+function credentialsValid(email, password) {
+  // Constant-time-ish password compare; domain check for the email.
+  if (!emailDomainAllowed(email)) return false;
+  var a = Buffer.from(String(password || ''));
+  var b = Buffer.from(APP_PASSWORD);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function signSession(email) {
+  var payload = Buffer
+    .from(JSON.stringify({ e: String(email || ''), iat: Date.now() }))
+    .toString('base64url');
+  var sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return payload + '.' + sig;
+}
+
+function verifySession(token) {
+  if (!token || typeof token !== 'string') return null;
+  var parts = token.split('.');
+  if (parts.length !== 2) return null;
+  var payload = parts[0];
+  var expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  var given = parts[1];
+  if (given.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return null;
+  try {
+    var data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!data || typeof data.iat !== 'number') return null;
+    if (Date.now() - data.iat > SESSION_MAX_AGE_MS) return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseCookies(req) {
+  var header = req.headers.cookie;
+  var out = {};
+  if (!header) return out;
+  header.split(';').forEach(function (pair) {
+    var idx = pair.indexOf('=');
+    if (idx === -1) return;
+    var k = pair.slice(0, idx).trim();
+    var v = pair.slice(idx + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function isAuthed(req) {
+  var cookies = parseCookies(req);
+  return verifySession(cookies[SESSION_COOKIE]) !== null;
+}
+
+
 const SYSTEM_PROMPT =
   "You are an experienced, senior assessor for 20/20 Project Management. " +
   "You genuinely care about helping learners improve. You will be provided " +
@@ -124,6 +201,61 @@ var anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 // ---------- App ----------
 const app = express();
 
+// Behind Render's proxy — needed so req protocol / secure cookies work.
+app.set('trust proxy', 1);
+
+// Parse JSON bodies (login endpoint).
+app.use(express.json());
+
+// ---------- Auth routes ----------
+// POST /api/login — validate shared credentials, set a signed session cookie.
+app.post('/api/login', (req, res) => {
+  const email    = (req.body && req.body.email)    ? String(req.body.email)    : '';
+  const password = (req.body && req.body.password) ? String(req.body.password) : '';
+
+  if (!credentialsValid(email, password)) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Those details were not recognised. Use your 20/20 email address and the access password.'
+    });
+  }
+
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie',
+    SESSION_COOKIE + '=' + signSession(email) +
+    '; HttpOnly; Path=/; SameSite=Lax; Max-Age=' + Math.floor(SESSION_MAX_AGE_MS / 1000) +
+    (secure ? '; Secure' : '')
+  );
+  return res.json({ ok: true });
+});
+
+// POST /api/logout — clear the session cookie.
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie',
+    SESSION_COOKIE + '=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0'
+  );
+  return res.json({ ok: true });
+});
+
+// Require a valid session for protected API endpoints.
+function requireAuth(req, res, next) {
+  if (isAuthed(req)) return next();
+  return res.status(401).json({ ok: false, error: 'Please sign in to use the marking tool.' });
+}
+
+// ---------- Page gate ----------
+// The tool page (index.html / "/") is only served to signed-in users.
+// Unauthenticated visitors are redirected to the branded login screen.
+// Static assets (CSS, logo, login page itself) remain freely accessible.
+app.get(['/', '/index.html'], (req, res, next) => {
+  if (isAuthed(req)) return next();
+  return res.redirect('/login.html');
+});
+app.get('/login.html', (req, res, next) => {
+  if (isAuthed(req)) return res.redirect('/');
+  return next();
+});
+
 // Serve the static frontend from the project root.
 app.use(express.static(ROOT_DIR, { index: 'index.html' }));
 
@@ -134,7 +266,7 @@ const upload = multer({
 });
 
 // ---------- POST /api/mark ----------
-app.post('/api/mark', (req, res) => {
+app.post('/api/mark', requireAuth, (req, res) => {
   upload.single('file')(req, res, async function (uploadErr) {
     if (uploadErr) {
       const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -308,7 +440,7 @@ app.post('/api/mark', (req, res) => {
 // Merges the original submission (as PDF) with a styled feedback/rubric
 // document generated from the mark_sheet JSON. Returns a downloadable
 // PDF named "<original>-Marked.pdf".
-app.post('/api/generate-marked-pdf', (req, res) => {
+app.post('/api/generate-marked-pdf', requireAuth, (req, res) => {
   upload.single('file')(req, res, async function (uploadErr) {
     if (uploadErr) {
       return res.status(400).json({ ok: false, error: 'Upload failed: ' + uploadErr.message });

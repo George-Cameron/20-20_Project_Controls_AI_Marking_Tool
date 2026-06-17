@@ -47,6 +47,7 @@
   function init() {
     prefetchLogo();
     setFooterYear();
+    wireSignout();
     wireHeroButtons();
     wireDropzone();
     wireModuleGrid();
@@ -68,6 +69,18 @@
         })
         .catch(function () { /* logo is optional */ });
     } catch (_) { /* logo is optional */ }
+  }
+
+  // -------- Sign out --------
+  function wireSignout() {
+    const btn = document.getElementById('signout-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      fetch('/api/logout', { method: 'POST' })
+        .then(function () { window.location.href = '/login.html'; })
+        .catch(function () { window.location.href = '/login.html'; });
+    });
   }
 
   // -------- Footer year --------

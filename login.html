@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In | 20/20 Project Management</title>
+  <meta name="description" content="Sign in to the 20/20 Project Management Project Controls Marking Tool." />
+
+  <!-- Favicon — 20/20 logo -->
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <link rel="apple-touch-icon" href="assets/logo.png" />
+
+  <!-- Google Fonts (Poppins) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" />
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <style>
+    /* ---- Login screen (brand navy backdrop, red-accented card) ---- */
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(232, 48, 58, 0.18), transparent 60%),
+        linear-gradient(160deg, #1D253C 0%, #313953 100%);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background-color: var(--color-white);
+      border-top: 4px solid var(--color-primary-red);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      padding: 40px 36px 36px;
+    }
+
+    .login-logo {
+      height: 72px;
+      width: auto;
+      margin: 0 auto 22px;
+    }
+
+    .login-eyebrow {
+      display: block;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--color-primary-red);
+      margin-bottom: 4px;
+    }
+
+    .login-title {
+      text-align: center;
+      font-size: 1.4rem;
+      margin: 0 0 4px 0;
+      color: var(--color-dark-slate);
+    }
+
+    .login-subtitle {
+      text-align: center;
+      color: var(--color-muted);
+      font-size: 0.86rem;
+      margin: 0 0 26px 0;
+    }
+
+    .login-field {
+      margin-bottom: 16px;
+    }
+
+    .login-field label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--color-dark-slate);
+      margin-bottom: 6px;
+    }
+
+    .login-field input {
+      width: 100%;
+      padding: 13px 14px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--color-body-text);
+      background-color: #fff;
+      border: 2px solid var(--color-border);
+      border-radius: 0;
+      transition: border-color var(--transition);
+    }
+    .login-field input:focus {
+      outline: none;
+      border-color: var(--color-primary-red);
+    }
+
+    .login-btn {
+      width: 100%;
+      justify-content: center;
+      margin-top: 6px;
+    }
+
+    .login-error {
+      display: none;
+      align-items: flex-start;
+      gap: 8px;
+      background-color: #fdecee;
+      border-left: 3px solid var(--color-primary-red);
+      color: #9a1f26;
+      font-size: 0.85rem;
+      padding: 11px 13px;
+      margin-bottom: 18px;
+    }
+    .login-error.is-visible { display: flex; }
+
+    .login-foot {
+      text-align: center;
+      color: var(--color-muted);
+      font-size: 0.74rem;
+      margin: 22px 0 0 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <main class="login-card">
+      <img src="assets/logo.png" alt="20/20 Project Management" class="login-logo" />
+      <span class="login-eyebrow">Project Controls</span>
+      <h1 class="login-title">Marking Companion</h1>
+      <p class="login-subtitle">Sign in with your 20/20 account to continue.</p>
+
+      <div class="login-error" id="login-error" role="alert">
+        <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+        <span id="login-error-text"></span>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div class="login-field">
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" autocomplete="username"
+                 placeholder="you@2020pm.uk" required />
+        </div>
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" placeholder="••••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-marking login-btn" id="login-btn">
+          <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
+          Sign In
+        </button>
+      </form>
+
+      <p class="login-foot">© <span id="login-year"></span> 20/20 Project Management</p>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+      document.getElementById('login-year').textContent = new Date().getFullYear();
+
+      var form    = document.getElementById('login-form');
+      var btn     = document.getElementById('login-btn');
+      var errBox  = document.getElementById('login-error');
+      var errText = document.getElementById('login-error-text');
+
+      function showError(msg) {
+        errText.textContent = msg;
+        errBox.classList.add('is-visible');
+      }
+      function clearError() {
+        errBox.classList.remove('is-visible');
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearError();
+
+        var email    = document.getElementById('email').value.trim();
+        var password = document.getElementById('password').value;
+
+        if (!email || !password) {
+          showError('Please enter your email address and password.');
+          return;
+        }
+
+        var original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Signing in…';
+
+        fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, password: password })
+        }).then(function (res) {
+          return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+        }).then(function (result) {
+          if (result.ok && result.data && result.data.ok) {
+            window.location.href = '/';
+            return;
+          }
+          btn.disabled = false;
+          btn.innerHTML = original;
+          showError((result.data && result.data.error) ||
+            'Sign in failed. Please check your details and try again.');
+        }).catch(function () {
+          btn.disabled = false;
+          btn.innerHTML = original;
+          showError('Could not reach the server. Please try again.');
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

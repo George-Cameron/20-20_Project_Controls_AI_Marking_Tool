@@ -150,6 +150,35 @@ p {
   align-items: center;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.header-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-white);
+  background-color: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+.header-signout:hover,
+.header-signout:focus-visible {
+  background-color: var(--color-primary-red);
+  border-color: var(--color-primary-red);
+  outline: none;
+}
+
 .header-logo {
   height: 46px;
   width: auto;
