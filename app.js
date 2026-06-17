@@ -663,9 +663,15 @@
     const data = wrap && wrap._lastResult;
     if (!data) return;
 
+    // Plain-text version is the fallback flavour; the HTML version is what
+    // Word (and other rich editors) pick up so colours and the rubric table
+    // survive the paste.
     const text = data.sheet
       ? markSheetToPlainText(data.sheet, data.fileName, data.moduleName, data.generatedAt)
       : data.rawText;
+    const html = data.sheet
+      ? markSheetToHtml(data.sheet, data.fileName, data.moduleName, data.generatedAt)
+      : null;
 
     function flash(label) {
       const original = button.innerHTML;
@@ -677,6 +683,30 @@
       }, 1600);
     }
 
+    // Preferred path: write both text/html and text/plain via the async
+    // Clipboard API so Word receives the formatted version.
+    if (html && navigator.clipboard && window.ClipboardItem) {
+      try {
+        var item = new ClipboardItem({
+          'text/html':  new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' })
+        });
+        navigator.clipboard.write([item]).then(
+          function () { flash('Copied'); },
+          function () { richFallbackCopy(html, text); flash('Copied'); }
+        );
+        return;
+      } catch (_) {
+        // ClipboardItem unsupported / threw — fall through.
+      }
+    }
+
+    if (html) {
+      richFallbackCopy(html, text);
+      flash('Copied');
+      return;
+    }
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(
         function () { flash('Copied'); },
@@ -686,6 +716,23 @@
       fallbackCopy(text);
       flash('Copied');
     }
+  }
+
+  // Fallback rich copy for browsers without ClipboardItem support: use a
+  // one-shot copy event handler to set both clipboard flavours.
+  function richFallbackCopy(html, text) {
+    function handler(e) {
+      if (e.clipboardData) {
+        e.clipboardData.setData('text/html', html);
+        e.clipboardData.setData('text/plain', text);
+        e.preventDefault();
+      }
+    }
+    document.addEventListener('copy', handler);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    document.removeEventListener('copy', handler);
+    if (!ok) fallbackCopy(text); // last resort: plain text only
   }
 
   function fallbackCopy(text) {
@@ -758,6 +805,187 @@
       lines.push('');
     }
     return lines.join('\n');
+  }
+
+  // Build a Word-friendly HTML version of the mark sheet that mirrors the
+  // styling of the generated PDF (red accents, navy headings, rubric table).
+  // Pasting this into Word preserves colours and the table because we place
+  // it on the clipboard as the "text/html" flavour (see handleCopyOutput).
+  function markSheetToHtml(sheet, fileName, moduleName, generatedAt) {
+    var RED   = '#E8303A';
+    var NAVY  = '#1D253C';
+    var BODY  = '#2a2a2a';
+    var MUTED = '#888888';
+    var GREY_BG = '#f2f2f2';
+    var BORDER  = '#d3d6de';
+
+    var FONT = 'font-family:Arial, Helvetica, sans-serif;';
+    var html = [];
+
+    html.push('<div style="' + FONT + 'color:' + BODY + ';">');
+
+    // ---- Header ----
+    html.push(
+      '<p style="margin:0;font-size:18pt;font-weight:bold;color:' + NAVY + ';">' +
+        'Assessment Feedback' +
+      '</p>'
+    );
+    html.push(
+      '<p style="margin:2px 0 0 0;font-size:10pt;color:' + MUTED + ';">' +
+        '20/20 Project Management' +
+      '</p>'
+    );
+    // Red underline
+    html.push(
+      '<div style="border-bottom:2px solid ' + RED + ';margin:6px 0 8px 0;font-size:1pt;line-height:1pt;">&nbsp;</div>'
+    );
+    html.push(
+      '<p style="margin:0 0 16px 0;font-size:9pt;color:' + MUTED + ';">' +
+        escapeHtml(fileName) + '  &middot;  ' + escapeHtml(moduleName) +
+        '  &middot;  ' + escapeHtml(generatedAt) +
+      '</p>'
+    );
+
+    // ---- Detailed feedback ----
+    var criteria = Array.isArray(sheet.criteria) ? sheet.criteria : [];
+    if (criteria.length > 0) {
+      html.push(
+        '<p style="margin:0 0 8px 0;font-size:14pt;font-weight:bold;color:' + NAVY + ';">' +
+          'Detailed Feedback' +
+        '</p>'
+      );
+      criteria.forEach(function (c, i) {
+        var name          = (c && c.name)          ? String(c.name)          : ('Criterion ' + (i + 1));
+        var score         = (c && c.score)         ? String(c.score)         : '';
+        var justification = (c && c.justification) ? String(c.justification) : '';
+        var feedback      = (c && c.feedback)      ? String(c.feedback)      : '';
+
+        html.push(
+          '<div style="border-left:3px solid ' + RED + ';padding-left:12px;margin:0 0 14px 0;">'
+        );
+        html.push(
+          '<p style="margin:0;font-size:11pt;font-weight:bold;color:' + NAVY + ';">' +
+            escapeHtml(name) +
+          '</p>'
+        );
+        if (score) {
+          html.push(
+            '<p style="margin:2px 0 0 0;font-size:10pt;font-weight:bold;color:' + RED + ';">' +
+              escapeHtml(score) +
+            '</p>'
+          );
+        }
+        if (justification) {
+          html.push(
+            '<p style="margin:6px 0 0 0;font-size:7pt;font-weight:bold;color:' + MUTED + ';letter-spacing:0.5px;">' +
+              'JUSTIFICATION' +
+            '</p>'
+          );
+          html.push(
+            '<p style="margin:1px 0 0 0;font-size:9.5pt;color:' + BODY + ';">' +
+              escapeHtml(justification) +
+            '</p>'
+          );
+        }
+        if (feedback) {
+          html.push(
+            '<p style="margin:6px 0 0 0;font-size:7pt;font-weight:bold;color:' + MUTED + ';letter-spacing:0.5px;">' +
+              'FEEDBACK' +
+            '</p>'
+          );
+          html.push(
+            '<p style="margin:1px 0 0 0;font-size:9.5pt;color:' + BODY + ';">' +
+              escapeHtml(feedback) +
+            '</p>'
+          );
+        }
+        html.push('</div>');
+      });
+    }
+
+    // ---- Rubric table ----
+    var rubric = Array.isArray(sheet.completed_rubric) ? sheet.completed_rubric : [];
+    if (rubric.length > 0) {
+      html.push(
+        '<p style="margin:14px 0 8px 0;font-size:14pt;font-weight:bold;color:' + NAVY + ';">' +
+          'Completed Marking Rubric' +
+        '</p>'
+      );
+      html.push(
+        '<table border="1" cellspacing="0" cellpadding="6" ' +
+          'style="border-collapse:collapse;width:100%;' + FONT + 'font-size:8.5pt;border:1px solid ' + BORDER + ';">'
+      );
+      // Header row
+      html.push('<thead><tr>');
+      ['Criterion', 'Available', 'Awarded', 'Comments'].forEach(function (label, ci) {
+        var w = ci === 0 ? '35%' : (ci === 3 ? '41%' : '12%');
+        html.push(
+          '<th bgcolor="' + NAVY.replace('#', '') + '" ' +
+            'style="background-color:' + NAVY + ';color:#ffffff;font-size:7.5pt;' +
+            'text-align:left;padding:6px;width:' + w + ';border:1px solid ' + BORDER + ';">' +
+            label.toUpperCase() +
+          '</th>'
+        );
+      });
+      html.push('</tr></thead><tbody>');
+      // Data rows
+      rubric.forEach(function (r, ri) {
+        var criterion = (r && r.criterion)       ? String(r.criterion)       : '';
+        var available = (r && r.marks_available) ? String(r.marks_available) : '';
+        var awarded   = (r && r.marks_awarded)   ? String(r.marks_awarded)   : '';
+        var comments  = (r && r.comments)        ? String(r.comments)        : '';
+        var bg = (ri % 2 === 1) ? GREY_BG : '#ffffff';
+        var bgAttr = bg.replace('#', '');
+        var cell = 'padding:6px;border:1px solid ' + BORDER + ';vertical-align:top;' +
+                   'background-color:' + bg + ';';
+        html.push('<tr>');
+        html.push('<td bgcolor="' + bgAttr + '" style="' + cell + 'font-weight:bold;color:' + BODY + ';">' + escapeHtml(criterion) + '</td>');
+        html.push('<td bgcolor="' + bgAttr + '" style="' + cell + 'color:' + BODY + ';">' + escapeHtml(available) + '</td>');
+        html.push('<td bgcolor="' + bgAttr + '" style="' + cell + 'font-weight:bold;color:' + RED + ';">' + escapeHtml(awarded) + '</td>');
+        html.push('<td bgcolor="' + bgAttr + '" style="' + cell + 'color:' + BODY + ';">' + escapeHtml(comments) + '</td>');
+        html.push('</tr>');
+      });
+      html.push('</tbody></table>');
+    }
+
+    // ---- Overall grade box ----
+    var summary = sheet.summary || {};
+    html.push(
+      '<table border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;margin-top:16px;">' +
+        '<tr>' +
+          '<td bgcolor="' + RED.replace('#', '') + '" style="width:4px;background-color:' + RED + ';"></td>' +
+          '<td bgcolor="' + GREY_BG.replace('#', '') + '" style="background-color:' + GREY_BG + ';padding:14px 18px;">'
+    );
+    html.push(
+      '<p style="margin:0;font-size:7pt;font-weight:bold;color:' + MUTED + ';letter-spacing:0.5px;">' +
+        'OVERALL GRADE' +
+      '</p>'
+    );
+    html.push(
+      '<p style="margin:2px 0 0 0;font-size:20pt;font-weight:bold;color:' + RED + ';">' +
+        escapeHtml(sheet.overall_grade ? String(sheet.overall_grade) : '—') +
+      '</p>'
+    );
+    if (summary.strengths) {
+      html.push(
+        '<p style="margin:10px 0 0 0;font-size:10pt;font-weight:bold;color:' + NAVY + ';">Strengths</p>' +
+        '<p style="margin:1px 0 0 0;font-size:9.5pt;color:' + BODY + ';">' +
+          escapeHtml(String(summary.strengths)) +
+        '</p>'
+      );
+    }
+    if (summary.areas_for_improvement) {
+      html.push(
+        '<p style="margin:10px 0 0 0;font-size:10pt;font-weight:bold;color:' + NAVY + ';">Areas for Improvement</p>' +
+        '<p style="margin:1px 0 0 0;font-size:9.5pt;color:' + BODY + ';">' +
+          escapeHtml(String(summary.areas_for_improvement)) +
+        '</p>'
+      );
+    }
+    html.push('</td></tr></table>');
+
+    html.push('</div>');
+    return html.join('');
   }
 
   function formatDateTime(d) {
