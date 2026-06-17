@@ -36,15 +36,38 @@
     moduleKey: null
   };
 
+  // The 20/20 logo as a base64 data URI. Prefetched at startup so the
+  // "Copy Output" HTML can embed it self-contained — the branded header
+  // then survives a paste into Word with no dependency on the live site.
+  let LOGO_DATA_URI = '';
+
   // -------- Init --------
   document.addEventListener('DOMContentLoaded', init);
 
   function init() {
+    prefetchLogo();
     setFooterYear();
     wireHeroButtons();
     wireDropzone();
     wireModuleGrid();
     wireSubmitButton();
+  }
+
+  // -------- Logo prefetch --------
+  // Convert the same-origin logo into a data URI once, up front. If it fails
+  // (offline, blocked), copy output simply omits the logo image.
+  function prefetchLogo() {
+    try {
+      fetch('assets/logo.png')
+        .then(function (r) { return r.ok ? r.blob() : null; })
+        .then(function (blob) {
+          if (!blob) return;
+          var reader = new FileReader();
+          reader.onload = function () { LOGO_DATA_URI = String(reader.result || ''); };
+          reader.readAsDataURL(blob);
+        })
+        .catch(function () { /* logo is optional */ });
+    } catch (_) { /* logo is optional */ }
   }
 
   // -------- Footer year --------
@@ -849,25 +872,54 @@
     var GREY_BG = '#f2f2f2';
     var BORDER  = '#d3d6de';
 
+    var TINT = '#eef1f7';   // light brand tint shaded behind the whole block
+
     var FONT = 'font-family:Arial, Helvetica, sans-serif;';
     var html = [];
 
-    html.push('<div style="' + FONT + 'color:' + BODY + ';">');
+    var logoImg = LOGO_DATA_URI
+      ? '<img src="' + LOGO_DATA_URI + '" width="46" height="55" ' +
+          'alt="20/20 Project Management" style="display:block;border:0;" />'
+      : '';
 
-    // ---- Header ----
+    // Force the assessment onto a fresh page so it is physically separated
+    // from the learner's own work. (Word honours page-break-before on paste.)
     html.push(
-      '<p style="margin:0;font-size:18pt;font-weight:bold;color:' + NAVY + ';">' +
-        'Assessment Feedback' +
-      '</p>'
+      '<p style="page-break-before:always;margin:0;font-size:1pt;line-height:1pt;">&nbsp;</p>'
     );
+
+    // Outer wrapper: a red left "spine" + a tinted, navy-bordered body. Built
+    // as a table because Word reliably preserves table shading and borders on
+    // paste, making the whole region read as distinctly NOT the learner's work.
     html.push(
-      '<p style="margin:2px 0 0 0;font-size:10pt;color:' + MUTED + ';">' +
-        '20/20 Project Management' +
-      '</p>'
+      '<table border="0" cellspacing="0" cellpadding="0" ' +
+        'style="border-collapse:collapse;width:100%;' + FONT + 'color:' + BODY + ';' +
+        'border:1px solid ' + NAVY + ';">' +
+      '<tr>' +
+        '<td bgcolor="' + RED.replace('#', '') + '" style="width:6px;background-color:' + RED + ';"></td>' +
+        '<td bgcolor="' + TINT.replace('#', '') + '" style="background-color:' + TINT + ';padding:18px 22px;">'
     );
-    // Red underline
+
+    // ---- Branded header band: logo + provenance label ----
     html.push(
-      '<div style="border-bottom:2px solid ' + RED + ';margin:6px 0 8px 0;font-size:1pt;line-height:1pt;">&nbsp;</div>'
+      '<table border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;margin:0 0 6px 0;"><tr>' +
+        (logoImg
+          ? '<td style="width:54px;vertical-align:middle;padding-right:14px;">' + logoImg + '</td>'
+          : '') +
+        '<td style="vertical-align:middle;">' +
+          '<p style="margin:0;font-size:16pt;font-weight:bold;color:' + NAVY + ';">' +
+            'AI Assessment Feedback' +
+          '</p>' +
+          '<p style="margin:2px 0 0 0;font-size:8.5pt;font-style:italic;color:' + MUTED + ';">' +
+            'Computer-generated assessment by the 20/20 Project Management Marking Companion ' +
+            '&mdash; not part of the learner&rsquo;s original submission.' +
+          '</p>' +
+        '</td>' +
+      '</tr></table>'
+    );
+    // Red rule under the header band
+    html.push(
+      '<div style="border-bottom:2px solid ' + RED + ';margin:2px 0 8px 0;font-size:1pt;line-height:1pt;">&nbsp;</div>'
     );
     html.push(
       '<p style="margin:0 0 16px 0;font-size:9pt;color:' + MUTED + ';">' +
@@ -1014,7 +1066,16 @@
     }
     html.push('</td></tr></table>');
 
-    html.push('</div>');
+    // End-of-assessment marker so the close of the AI section is explicit too.
+    html.push(
+      '<p style="margin:14px 0 0 0;text-align:center;font-size:8pt;font-weight:bold;' +
+        'letter-spacing:1px;color:' + MUTED + ';">' +
+        '&mdash; END OF AI ASSESSMENT FEEDBACK &mdash;' +
+      '</p>'
+    );
+
+    // Close the tinted body cell + red spine row + outer wrapper table.
+    html.push('</td></tr></table>');
     return html.join('');
   }
 
