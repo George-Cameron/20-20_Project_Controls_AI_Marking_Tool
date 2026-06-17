@@ -683,8 +683,16 @@
       }, 1600);
     }
 
-    // Preferred path: write both text/html and text/plain via the async
-    // Clipboard API so Word receives the formatted version.
+    // Primary path: copy a real selection of rendered HTML. This runs
+    // synchronously inside the click gesture and reliably places BOTH a
+    // text/html and a text/plain flavour on the clipboard, so Word offers
+    // "Keep Source Formatting". Works in secure and insecure contexts alike.
+    if (html && selectionCopyHtml(html, text)) {
+      flash('Copied');
+      return;
+    }
+
+    // Secondary path: async Clipboard API with an explicit HTML flavour.
     if (html && navigator.clipboard && window.ClipboardItem) {
       try {
         var item = new ClipboardItem({
@@ -693,18 +701,12 @@
         });
         navigator.clipboard.write([item]).then(
           function () { flash('Copied'); },
-          function () { richFallbackCopy(html, text); flash('Copied'); }
+          function () { fallbackCopy(text); flash('Copied'); }
         );
         return;
       } catch (_) {
         // ClipboardItem unsupported / threw — fall through.
       }
-    }
-
-    if (html) {
-      richFallbackCopy(html, text);
-      flash('Copied');
-      return;
     }
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -718,9 +720,32 @@
     }
   }
 
-  // Fallback rich copy for browsers without ClipboardItem support: use a
-  // one-shot copy event handler to set both clipboard flavours.
-  function richFallbackCopy(html, text) {
+  // Copy rich HTML by selecting a hidden contenteditable node and invoking
+  // the native copy command. Because there is a genuine selection, the
+  // browser fires the copy event and writes the formatted HTML to the
+  // clipboard. A copy-event handler also pins the exact plain-text flavour.
+  // Returns true on success.
+  function selectionCopyHtml(html, text) {
+    var container = document.createElement('div');
+    container.setAttribute('contenteditable', 'true');
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.whiteSpace = 'normal';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    var selection = window.getSelection();
+    var savedRanges = [];
+    for (var i = 0; i < selection.rangeCount; i++) {
+      savedRanges.push(selection.getRangeAt(i));
+    }
+
+    var range = document.createRange();
+    range.selectNodeContents(container);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
     function handler(e) {
       if (e.clipboardData) {
         e.clipboardData.setData('text/html', html);
@@ -729,10 +754,15 @@
       }
     }
     document.addEventListener('copy', handler);
+
     var ok = false;
     try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+
     document.removeEventListener('copy', handler);
-    if (!ok) fallbackCopy(text); // last resort: plain text only
+    selection.removeAllRanges();
+    savedRanges.forEach(function (r) { selection.addRange(r); });
+    document.body.removeChild(container);
+    return ok;
   }
 
   function fallbackCopy(text) {
