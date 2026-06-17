@@ -920,7 +920,7 @@
           ? '<td style="width:54px;vertical-align:middle;padding-right:14px;">' + logoImg + '</td>'
           : '') +
         '<td style="vertical-align:middle;">' +
-          '<p style="margin:0;font-size:16pt;font-weight:bold;color:' + NAVY + ';">' +
+          '<p style="margin:0;font-size:18pt;font-weight:bold;color:' + NAVY + ';">' +
             'Assessment Feedback' +
           '</p>' +
         '</td>' +
