@@ -900,7 +900,7 @@
         '<td bgcolor="' + TINT.replace('#', '') + '" style="background-color:' + TINT + ';padding:18px 22px;">'
     );
 
-    // ---- Branded header band: logo + provenance label ----
+    // ---- Branded header band: logo + title ----
     html.push(
       '<table border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;margin:0 0 6px 0;"><tr>' +
         (logoImg
@@ -908,11 +908,7 @@
           : '') +
         '<td style="vertical-align:middle;">' +
           '<p style="margin:0;font-size:16pt;font-weight:bold;color:' + NAVY + ';">' +
-            'AI Assessment Feedback' +
-          '</p>' +
-          '<p style="margin:2px 0 0 0;font-size:8.5pt;font-style:italic;color:' + MUTED + ';">' +
-            'Computer-generated assessment by the 20/20 Project Management Marking Companion ' +
-            '&mdash; not part of the learner&rsquo;s original submission.' +
+            'Assessment Feedback' +
           '</p>' +
         '</td>' +
       '</tr></table>'
@@ -1065,14 +1061,6 @@
       );
     }
     html.push('</td></tr></table>');
-
-    // End-of-assessment marker so the close of the AI section is explicit too.
-    html.push(
-      '<p style="margin:14px 0 0 0;text-align:center;font-size:8pt;font-weight:bold;' +
-        'letter-spacing:1px;color:' + MUTED + ';">' +
-        '&mdash; END OF AI ASSESSMENT FEEDBACK &mdash;' +
-      '</p>'
-    );
 
     // Close the tinted body cell + red spine row + outer wrapper table.
     html.push('</td></tr></table>');
